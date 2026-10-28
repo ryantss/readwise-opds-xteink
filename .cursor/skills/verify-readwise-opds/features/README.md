@@ -14,7 +14,7 @@ The catalog is consumed by CrossInk's OPDS browser on an Xteink X3 (and by Cross
 - Default origin is `http://127.0.0.1:8788`. Read the live origin from `.cache/verify-opds/instance.json` if `--port` was not the default.
 - Put evidence under `.cache/verify-opds/evidence/<run-id>/`. Never delete that tree during cleanup.
 - Never drive a catalog this run did not start. Never drive `scripts/dev-server.js` (real Readwise token) for these recipes.
-- `clang++` or `g++` and libexpat must be present before `walk`.
+- `clang++` or `g++` and the Expat headers (`expat.h` / `libexpat1-dev`) must be present before `walk`.
 
 ## Driving conventions
 

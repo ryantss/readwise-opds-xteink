@@ -31,7 +31,7 @@ Ready means all of these, not merely that a port accepts TCP:
 - stdout ends with `ready http://127.0.0.1:8788/opds` (JSON: `"ready": true`, `"baseUrl": "http://127.0.0.1:8788"`)
 - `./scripts/opds-cli doctor` exits 0
 
-`walk` also needs `clang++` or `g++` and libexpat, the same host tools as `npm run verify:crossink`. Launch itself does not compile parsers.
+`walk` also needs `clang++` or `g++` and the Expat C headers (`expat.h`, Debian/Ubuntu package `libexpat1-dev`), the same host tools as `npm run verify:crossink`. Launch itself does not compile parsers. A runtime `libexpat.so` without headers is not enough: `build-crossink-checks.sh` will fail with `fatal error: expat.h: No such file or directory`.
 
 Node: `package.json` engines is `>=24`. The fixture catalog also runs on Node 22. An `EBADENGINE` warning from `npm install` is not a launch failure.
 

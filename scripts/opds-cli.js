@@ -444,10 +444,16 @@ function buildCrossInkChecks() {
       1
     );
   }
-  const bin = `${result.stdout}${result.stderr}`
-    .trim()
-    .split("\n")
-    .at(-1);
+  // The build script prints the bin directory on stdout and the pin on stderr.
+  // Do not concatenate streams: the last stderr line is the pin, not the path.
+  const bin = (result.stdout || "").trim().split("\n").filter(Boolean).at(-1);
+  if (!bin || !existsSync(join(bin, "opds-check-crossink"))) {
+    fail(
+      "CrossInk check binaries were not built",
+      `expected opds-check-crossink under ${bin || "(empty stdout)"}\n${result.stderr || ""}`.trim(),
+      1
+    );
+  }
   return bin;
 }
 
