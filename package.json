@@ -13,6 +13,7 @@
     "test": "node --test",
     "typecheck": "node --check api/*.js src/**/*.js test/*.js scripts/*.js",
     "dev": "node scripts/dev-server.js",
+    "opds": "node scripts/opds-cli.js",
     "verify:crosspoint": "node scripts/verify-crosspoint.js",
     "verify:crossink": "node scripts/verify-crossink.js"
   },

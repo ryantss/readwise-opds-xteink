@@ -78,7 +78,13 @@ export async function startFixtureCatalog({ port = 0 } = {}) {
     res.end(Buffer.from(await response.arrayBuffer()));
   });
 
-  await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
   const { port: bound } = server.address();
   return {
     baseUrl: `http://127.0.0.1:${bound}`,
