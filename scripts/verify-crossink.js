@@ -26,6 +26,7 @@ const [baseUrlArg, bookCount = "1"] = process.argv.slice(2);
 
 const failures = [];
 const differences = [];
+const extras = [];
 
 function check(ok, message) {
   console.log(`${ok ? "PASS" : "FAIL"} ${message}`);
@@ -155,7 +156,32 @@ async function checkFeed(url, name) {
       if (parsed.ok && crossink.ok) compareEntries(name, `CrossInk ${CROSSINK_OPDS}`, crossink.output, `CrossPoint ${parser}`, parsed.output);
     }
   }
+  recordExtras(name, crossink.output, crosspointOutputs);
   return { crossink: crossink.output, crosspoint: crosspointOutputs };
+}
+
+function firstEntryLine(output) {
+  return output.split("\n").find((line) => /^(BOOK|NAV) /.test(line)) ?? "";
+}
+
+function recordExtras(name, crossinkOutput, crosspointOutputs) {
+  const develop = crosspointOutputs["opds-check"];
+  if (!develop) return;
+  extras.push({
+    name,
+    crossink: {
+      truncated: fieldOf(crossinkOutput, "truncated") || (/^truncated: (.+)$/m.exec(crossinkOutput)?.[1] ?? ""),
+      prevPage: fieldOf(crossinkOutput, "prev page"),
+      first: firstEntryLine(crossinkOutput)
+    },
+    crosspointDevelop: {
+      feedTitle: fieldOf(develop, "feed title"),
+      first: firstEntryLine(develop)
+    },
+    crosspoint165: {
+      first: firstEntryLine(crosspointOutputs["opds-check-1.6.5"] ?? "")
+    }
+  });
 }
 
 try {
@@ -229,9 +255,16 @@ try {
 
 console.log("\n--- Parse differences (CrossInk v1.6.1 vs CrossPoint) ---");
 if (differences.length === 0) {
-  console.log("None on this catalog. CrossInk and CrossPoint agreed on entry type, title, author, href, next-page, and OPF metadata.");
+  console.log("Shared fields: none. Type, title, author, href, next-page, and OPF metadata matched.");
 } else {
   for (const item of differences) console.log(`- ${item}`);
+}
+console.log("\n--- Extra fields the other parser does not keep ---");
+for (const extra of extras) {
+  console.log(`${extra.name}:`);
+  console.log(`  CrossInk: truncated=${extra.crossink.truncated || "(n/a)"} prevPage=${JSON.stringify(extra.crossink.prevPage)} first=${extra.crossink.first}`);
+  console.log(`  CrossPoint 1.6.5 first=${extra.crosspoint165.first}`);
+  console.log(`  CrossPoint develop feedTitle=${JSON.stringify(extra.crosspointDevelop.feedTitle)} first=${extra.crosspointDevelop.first}`);
 }
 
 console.log(`\nCrossInk pin: ${CROSSINK_TAG} (${CROSSINK_SHA})`);
