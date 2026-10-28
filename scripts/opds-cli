@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Agent entry point for the Readwise OPDS fixture catalog.
+set -euo pipefail
+exec node "$(cd "$(dirname "$0")" && pwd)/opds-cli.js" "$@"
