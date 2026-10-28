@@ -26,7 +26,15 @@ checkout https://github.com/crosspoint-reader/crosspoint-reader.git "$cache/cros
 cp=$cache/crosspoint-reader
 opds=$cache/freeink-sdk/libs/network/Opds
 mkdir -p "$cache/bin"
-cxx=(clang++ -std=c++20 -O1 -w)
+if clang++ -std=c++20 -xc++ - -o /dev/null >/dev/null 2>&1 <<'EOF'
+#include <cstddef>
+int main() { return 0; }
+EOF
+then
+  cxx=(clang++ -std=c++20 -O1 -w)
+else
+  cxx=(g++ -std=c++20 -O1 -w)
+fi
 
 "${cxx[@]}" -I "$here/crosspoint/stubs" -I "$opds/include" \
   "$here/crosspoint/opds-check.cpp" "$opds/src/OpdsParser.cpp" -lexpat -o "$cache/bin/opds-check"

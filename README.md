@@ -2,7 +2,8 @@
 
 Your [Readwise Reader](https://readwise.io/read) library as an OPDS catalog,
 for reading on an Xteink e-reader running
-[CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader).
+[CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) or
+[CrossInk](https://github.com/uxjulia/CrossInk).
 
 **Start with the idea:** [PROMPTS.md](PROMPTS.md) (what was asked) and
 [PLAN.md](PLAN.md) (options, design, firmware constraints, verification).
@@ -87,17 +88,27 @@ node --env-file=.env.local scripts/dev-server.js   # http://localhost:8787/opds
 
 `.env.local` holds `READWISE_TOKEN`, `OPDS_USERNAME`, `OPDS_PASSWORD`.
 
-## Verify against CrossPoint
+## Verify against CrossPoint and CrossInk
+
+Needs `clang++` or `g++`, and libexpat. Both commands start a mocked Readwise catalog,
+so they run without an account. They walk the menu, every shelf and its next
+page, and one EPUB per shelf through the device parsers, then check XML
+well-formedness and JPEG size. Non-zero exit on the first failed check.
+
+```sh
+npm run verify:crosspoint    # CrossPoint OpdsParser 1.6.5 + develop, ContentOpfParser
+npm run verify:crossink      # CrossInk OpdsParser + ContentOpfParser, pinned to v1.6.1
+                             # (9914146eeae7b46b300f475a16c32426fc02ec1f); also
+                             # compares the same feeds against CrossPoint
+```
+
+To walk a live deployment instead:
 
 ```sh
 set -a; . ./.env.local; set +a
 npm run verify:crosspoint -- https://<your-project>.vercel.app 1
+npm run verify:crossink -- https://<your-project>.vercel.app 1
 ```
-
-Compiles CrossPoint's own `OpdsParser` – from the 1.6.5 release and a pinned
-develop revision – plus `ContentOpfParser` (needs `clang++` and expat), then
-walks the live menu, every shelf and its next page, and a book per shelf
-through them, with expat well-formedness and JPEG checks.
 
 ## License
 

@@ -62,10 +62,14 @@ private, link-local or CGNAT addresses are refused on every redirect hop.
 The judge is the device's own code, not a reading of it:
 `scripts/verify-crosspoint.js` compiles CrossPoint's `OpdsParser` (from the
 1.6.5 release and a pinned develop revision) and `ContentOpfParser` on the
-host, then walks a live deployment – menu, every shelf and its next page, a
-book per shelf – checking every feed parses, every EPUB's XML is well-formed
-under expat, the OPF yields title/author/cover, and every image is a baseline
-JPEG within 528×792.
+host. `scripts/verify-crossink.js` does the same with CrossInk's parsers,
+pinned to tag v1.6.1 (`9914146eeae7b46b300f475a16c32426fc02ec1f`), and
+compares the parsed entries and OPF metadata against CrossPoint. Both default
+to a mocked Readwise catalog (no account) and can also walk a live
+deployment: menu, every shelf and its next page, a book per shelf. Every feed
+must parse, every EPUB's XML must be well-formed under expat, the OPF must
+yield title/author/cover, and every image must be a baseline JPEG within
+528×792.
 
 ## Next
 
