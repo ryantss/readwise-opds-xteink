@@ -2,7 +2,10 @@
 // parsers: menu and shelf feeds via OpdsParser (1.6.5 release and develop), each EPUB's XML via expat and its OPF via
 // ContentOpfParser, and images against what the X3 decodes well.
 //
-// Usage: OPDS_USERNAME=... OPDS_PASSWORD=... node scripts/verify-crosspoint.js <base-url> [books-per-shelf]
+// With no URL, starts a mocked Readwise catalog so the check runs without an
+// account. Pass a URL (and OPDS_USERNAME / OPDS_PASSWORD) to walk a live server.
+//
+// Usage: node scripts/verify-crosspoint.js [base-url] [books-per-shelf]
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,10 +15,19 @@ import { fileURLToPath } from "node:url";
 import { unzipSync } from "fflate";
 import sharp from "sharp";
 
+import { startFixtureCatalog } from "./fixture-catalog.js";
+
 const here = dirname(fileURLToPath(import.meta.url));
-const [baseUrl, bookCount = "1"] = process.argv.slice(2);
-if (!baseUrl) {
-  console.error("usage: node scripts/verify-crosspoint.js <base-url> [books]");
+const [baseUrlArg, bookCount = "1"] = process.argv.slice(2);
+const catalog = baseUrlArg ? null : await startFixtureCatalog();
+const baseUrl = baseUrlArg || catalog.baseUrl;
+if (catalog) {
+  process.env.OPDS_USERNAME = catalog.username;
+  process.env.OPDS_PASSWORD = catalog.password;
+  console.log(`catalog: ${baseUrl} (mocked Readwise fixture)`);
+}
+if (baseUrlArg && (!process.env.OPDS_USERNAME || !process.env.OPDS_PASSWORD)) {
+  console.error("OPDS_USERNAME and OPDS_PASSWORD are required when verifying a live URL");
   process.exit(2);
 }
 
@@ -63,56 +75,60 @@ async function checkFeed(url, name) {
 const entriesOf = (output, kind) =>
   [...output.matchAll(new RegExp(`^${kind} +(.+?) \\| .*? \\| (https?:\\/\\/\\S+) \\|`, "gm"))].map(([, title, href]) => ({ title, href }));
 
-const unauthenticated = await fetch(`${baseUrl}/opds`);
-check(unauthenticated.status === 401, `feed without credentials is rejected (${unauthenticated.status})`);
+try {
+  const unauthenticated = await fetch(`${baseUrl}/opds`);
+  check(unauthenticated.status === 401, `feed without credentials is rejected (${unauthenticated.status})`);
 
-const root = entriesOf(await checkFeed(`${baseUrl}/opds`, "root menu"), "NAV");
-check(
-  JSON.stringify(root.map((entry) => entry.title)) === JSON.stringify(SHELVES),
-  `root menu lists ${SHELVES.join(", ")} (got ${root.map((entry) => entry.title).join(", ")})`
-);
+  const root = entriesOf(await checkFeed(`${baseUrl}/opds`, "root menu"), "NAV");
+  check(
+    JSON.stringify(root.map((entry) => entry.title)) === JSON.stringify(SHELVES),
+    `root menu lists ${SHELVES.join(", ")} (got ${root.map((entry) => entry.title).join(", ")})`
+  );
 
-const books = [];
-for (const shelf of root) {
-  const output = await checkFeed(shelf.href, `${shelf.title} feed`);
-  const shelfBooks = entriesOf(output, "BOOK");
-  check(shelfBooks.length > 0, `${shelf.title} feed has books (${shelfBooks.length} on page 1)`);
-  console.log(shelfBooks.slice(0, 3).map((book) => `    ${book.title}`).join("\n"));
-  books.push(...shelfBooks.slice(0, Number(bookCount)));
+  const books = [];
+  for (const shelf of root) {
+    const output = await checkFeed(shelf.href, `${shelf.title} feed`);
+    const shelfBooks = entriesOf(output, "BOOK");
+    check(shelfBooks.length > 0, `${shelf.title} feed has books (${shelfBooks.length} on page 1)`);
+    console.log(shelfBooks.slice(0, 3).map((book) => `    ${book.title}`).join("\n"));
+    books.push(...shelfBooks.slice(0, Number(bookCount)));
 
-  const nextPage = /^next page: (.+)$/m.exec(output)?.[1];
-  if (nextPage) await checkFeed(nextPage, `${shelf.title} page 2`);
-}
-
-for (const { title, href } of books) {
-  const book = await fetchTimed(href);
-  const label = `"${title}"`;
-  check(book.response.status === 200, `${label} downloads (${book.response.status}, ${(book.bytes.length / 1024).toFixed(0)} KB, ${book.ms} ms)`);
-  if (book.response.status !== 200) continue;
-
-  check(Buffer.from(book.bytes.subarray(30, 38)).toString() === "mimetype", `${label} starts with the mimetype entry`);
-
-  const files = unzipSync(book.bytes);
-  const dir = join(work, href.split("/").at(-1));
-  const xmlPaths = [];
-  for (const [name, content] of Object.entries(files)) {
-    const path = join(dir, name);
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, content);
-    if (/\.(xhtml|opf|ncx|xml)$/.test(name)) xmlPaths.push(path);
+    const nextPage = /^next page: (.+)$/m.exec(output)?.[1];
+    if (nextPage) await checkFeed(nextPage, `${shelf.title} page 2`);
   }
 
-  const wellFormed = run("xml-check", xmlPaths);
-  check(wellFormed.ok, `${label} XML is well-formed under expat${wellFormed.ok ? "" : `: ${wellFormed.output}`}`);
-  const opf = run("opf-check", [join(dir, "OEBPS/content.opf")]);
-  check(opf.ok, `${label} OPF parses in ContentOpfParser`);
-  console.log(opf.output.replace(/^/gm, "    "));
+  for (const { title, href } of books) {
+    const book = await fetchTimed(href);
+    const label = `"${title}"`;
+    check(book.response.status === 200, `${label} downloads (${book.response.status}, ${(book.bytes.length / 1024).toFixed(0)} KB, ${book.ms} ms)`);
+    if (book.response.status !== 200) continue;
 
-  for (const name of Object.keys(files).filter((file) => file.endsWith(".jpg"))) {
-    const meta = await sharp(files[name]).metadata();
-    const fits = meta.format === "jpeg" && !meta.isProgressive && meta.width <= 528 && meta.height <= 792;
-    check(fits, `${label} ${name} is a baseline JPEG within 528x792 (${meta.width}x${meta.height}, ${meta.channels}ch)`);
+    check(Buffer.from(book.bytes.subarray(30, 38)).toString() === "mimetype", `${label} starts with the mimetype entry`);
+
+    const files = unzipSync(book.bytes);
+    const dir = join(work, href.split("/").at(-1));
+    const xmlPaths = [];
+    for (const [name, content] of Object.entries(files)) {
+      const path = join(dir, name);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, content);
+      if (/\.(xhtml|opf|ncx|xml)$/.test(name)) xmlPaths.push(path);
+    }
+
+    const wellFormed = run("xml-check", xmlPaths);
+    check(wellFormed.ok, `${label} XML is well-formed under expat${wellFormed.ok ? "" : `: ${wellFormed.output}`}`);
+    const opf = run("opf-check", [join(dir, "OEBPS/content.opf")]);
+    check(opf.ok, `${label} OPF parses in ContentOpfParser`);
+    console.log(opf.output.replace(/^/gm, "    "));
+
+    for (const name of Object.keys(files).filter((file) => file.endsWith(".jpg"))) {
+      const meta = await sharp(files[name]).metadata();
+      const fits = meta.format === "jpeg" && !meta.isProgressive && meta.width <= 528 && meta.height <= 792;
+      check(fits, `${label} ${name} is a baseline JPEG within 528x792 (${meta.width}x${meta.height}, ${meta.channels}ch)`);
+    }
   }
+} finally {
+  if (catalog) await catalog.close();
 }
 
 console.log(`\n${failures.length === 0 ? "ALL PASS" : `${failures.length} FAILED`} (artifacts in ${work})`);
