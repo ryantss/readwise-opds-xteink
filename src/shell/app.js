@@ -3,10 +3,9 @@ import { isAuthorized } from "../core/auth.js";
 import { buildEpub } from "../core/epub.js";
 import { buildFeed, buildNavigationFeed, findShelf, isReadable, readwiseLocation } from "../core/feed.js";
 import { contentDisposition, epubFilename } from "../core/filename.js";
+import { encodePageToken, decodePageToken, FEED_PAGE_SIZE, listShelfPage } from "../core/paging.js";
 import { fetchEpubImages } from "./images.js";
 import { createReadwiseClient, ReadwiseError } from "./readwise.js";
-
-const FEED_PAGE_SIZE = 50; // CrossPoint holds at most ~62 entries per page
 const MAX_IMAGES = 40;
 const ACQUISITION_CONTENT_TYPE = "application/atom+xml;profile=opds-catalog;kind=acquisition; charset=utf-8";
 const NAVIGATION_CONTENT_TYPE = "application/atom+xml;profile=opds-catalog;kind=navigation; charset=utf-8";
@@ -80,13 +79,24 @@ export function createApp({ env, fetch = globalThis.fetch, lookup, now = () => n
         const shelf = findShelf(location);
         if (!shelf) return bytesResponse("Not found\n", {}, 404);
 
-        const cursor = params.get("cursor");
-        const { docs, nextCursor } = await readwise.listLocation({
+        const requested = decodePageToken(params.get("cursor"));
+        const { docs, nextCursor, previousReadwiseCursor } = await listShelfPage(readwise.listLocation, {
           location: readwiseLocation(shelf),
-          cursor,
-          limit: FEED_PAGE_SIZE
+          page: requested.page,
+          readwiseCursor: requested.readwiseCursor
         });
-        const xml = buildFeed({ shelf, docs: docs.filter(isReadable), baseUrl: baseUrl(request), nextCursor, updated });
+        // Filter after the Readwise fetch: a page can have fewer than 10
+        // readable docs. Topping up would consume the next cursor and needs a
+        // skip offset in the token to avoid skips/duplicates. Not trivial.
+        const xml = buildFeed({
+          shelf,
+          docs: docs.filter(isReadable),
+          baseUrl: baseUrl(request),
+          pageToken: encodePageToken(requested.page, requested.readwiseCursor),
+          nextToken: nextCursor ? encodePageToken(requested.page + 1, nextCursor) : null,
+          previousToken: requested.page > 1 ? encodePageToken(requested.page - 1, previousReadwiseCursor) : undefined,
+          updated
+        });
         return bytesResponse(xml, { "Content-Type": ACQUISITION_CONTENT_TYPE, ...noStore });
       });
     },

@@ -4,6 +4,7 @@ import test from "node:test";
 import { strFromU8, unzipSync } from "fflate";
 import sharp from "sharp";
 
+import { encodePageToken } from "../src/core/paging.js";
 import { createApp } from "../src/shell/app.js";
 
 const env = { READWISE_TOKEN: "rw-token", OPDS_USERNAME: "reader", OPDS_PASSWORD: "pw" };
@@ -89,11 +90,12 @@ test("inbox shelf lists documents from the Reader new location", async () => {
 
   assert.equal(response.status, 200);
   assert.match(xml, /<title>Readwise Inbox<\/title>/);
-  assert.match(xml, /href="https:\/\/opds.example.com\/opds\/inbox\?cursor=cur2"/);
+  assert.match(xml, new RegExp(`href="https://opds.example.com/opds/inbox\\?cursor=${encodePageToken(2, "cur2")}"`));
+  assert.doesNotMatch(xml, /rel="previous"/);
 
   const listUrl = new URL(calls[0].url);
   assert.equal(listUrl.searchParams.get("location"), "new");
-  assert.equal(listUrl.searchParams.get("limit"), "50");
+  assert.equal(listUrl.searchParams.get("limit"), "10");
 });
 
 test("shelf feed lists readable documents from that location with a next-page link", async () => {
@@ -115,11 +117,12 @@ test("shelf feed lists readable documents from that location with a next-page li
   assert.match(xml, /<updated>2026-10-24T01:02:03.000Z<\/updated>/);
   assert.match(xml, /href="https:\/\/opds.example.com\/opds\/books\/doc1.epub"/);
   assert.doesNotMatch(xml, /pdf1/);
-  assert.match(xml, /href="https:\/\/opds.example.com\/opds\/later\?cursor=cur2"/);
+  assert.match(xml, new RegExp(`href="https://opds.example.com/opds/later\\?cursor=${encodePageToken(2, "cur2")}"`));
+  assert.doesNotMatch(xml, /rel="previous"/);
 
   const listUrl = new URL(calls[0].url);
   assert.equal(listUrl.searchParams.get("location"), "later");
-  assert.equal(listUrl.searchParams.get("limit"), "50");
+  assert.equal(listUrl.searchParams.get("limit"), "10");
   assert.equal(listUrl.searchParams.get("pageCursor"), null);
   assert.equal(calls[0].headers.Authorization, "Token rw-token");
 });
@@ -130,14 +133,70 @@ test("shelf feed passes the page cursor through to Readwise and honours BASE_URL
   ]);
   const app = createApp({ env: { ...env, BASE_URL: "https://reader.example.org/" }, fetch, ...silent });
 
+  const page2 = encodePageToken(2, "cur2");
   const xml = await (
-    await app.feed(new Request("http://internal/api/opds?location=archive&cursor=cur2", { headers: auth }))
+    await app.feed(new Request(`http://internal/api/opds?location=archive&cursor=${page2}`, { headers: auth }))
   ).text();
 
   const listUrl = new URL(calls[0].url);
   assert.equal(listUrl.searchParams.get("location"), "archive");
   assert.equal(listUrl.searchParams.get("pageCursor"), "cur2");
   assert.match(xml, /href="https:\/\/reader.example.org\/opds\/books\/doc1.epub"/);
+  assert.match(xml, /rel="previous"/);
+  assert.match(xml, /href="https:\/\/reader.example.org\/opds\/archive"/);
+  assert.doesNotMatch(xml, /rel="next"/);
+});
+
+test("shelf page 2 previous returns the first page's entries without skipping", async () => {
+  const page1 = [article, { ...article, id: "doc2", title: "Second" }];
+  const page2 = [{ ...article, id: "doc11", title: "Eleventh" }];
+  const { fetch, calls } = fakeFetch([
+    [
+      "https://readwise.io/api/v3/list/",
+      (url) => {
+        const cursor = new URL(url).searchParams.get("pageCursor");
+        if (!cursor) return json({ count: 12, nextPageCursor: "rw1", results: page1 });
+        if (cursor === "rw1") return json({ count: 12, nextPageCursor: null, results: page2 });
+        return json({ count: 0, nextPageCursor: null, results: [] });
+      }
+    ]
+  ]);
+  const app = createApp({ env, fetch, now: () => new Date("2026-10-24T01:02:03Z"), ...silent });
+
+  const first = await (await app.feed(new Request("https://opds.example.com/api/opds?location=inbox", { headers: auth }))).text();
+  assert.match(first, /doc1\.epub/);
+  assert.doesNotMatch(first, /doc11/);
+
+  const second = await (
+    await app.feed(
+      new Request(`https://opds.example.com/api/opds?location=inbox&cursor=${encodePageToken(2, "rw1")}`, { headers: auth })
+    )
+  ).text();
+  assert.match(second, /doc11/);
+  assert.doesNotMatch(second, /doc1\.epub/);
+  assert.match(second, /rel="previous"[^>]+href="https:\/\/opds.example.com\/opds\/inbox"/);
+  assert.doesNotMatch(second, /rel="next"/);
+
+  const back = await (await app.feed(new Request("https://opds.example.com/api/opds?location=inbox", { headers: auth }))).text();
+  assert.match(back, /doc1\.epub/);
+  assert.match(back, /doc2\.epub/);
+  assert.doesNotMatch(back, /doc11/);
+  assert.equal(calls.filter((call) => new URL(call.url).searchParams.get("pageCursor") === "rw1").length, 1);
+});
+
+test("a page can have fewer than 10 entries after non-readable docs are filtered", async () => {
+  const results = Array.from({ length: 10 }, (_, index) =>
+    index === 3
+      ? { ...article, id: `pdf${index}`, category: "pdf" }
+      : { ...article, id: `doc${index}`, title: `Article ${index}` }
+  );
+  const { fetch } = fakeFetch([
+    ["https://readwise.io/api/v3/list/", () => json({ count: 10, nextPageCursor: "rw1", results })]
+  ]);
+  const app = createApp({ env, fetch, ...silent });
+  const xml = await (await app.feed(new Request("https://opds.example.com/api/opds?location=later", { headers: auth }))).text();
+  assert.equal([...xml.matchAll(/<entry>/g)].length, 9);
+  assert.doesNotMatch(xml, /pdf3/);
 });
 
 test("unknown shelf is a 404 without calling Readwise", async () => {

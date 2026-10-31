@@ -4,12 +4,11 @@ import { createServer } from "node:http";
 
 import sharp from "sharp";
 
+import { FEED_PAGE_SIZE } from "../src/core/paging.js";
 import { createApp } from "../src/shell/app.js";
 
 export const FIXTURE_USERNAME = "fixture-reader";
 export const FIXTURE_PASSWORD = "fixture-password";
-
-const PAGE = 50;
 // Keys are Reader API locations. Inbox is `new`; OPDS ids/titles use the slug.
 const SHELF_SIZES = { new: 51, shortlist: 51, later: 51, archive: 51 };
 const SHELF_SLUG = { new: "inbox" };
@@ -133,11 +132,11 @@ function readwiseList(params, shelves, byId) {
 
   const location = params.get("location");
   const docs = shelves[location] ?? [];
-  const limit = Number(params.get("limit") || PAGE);
+  const limit = Number(params.get("limit") || FEED_PAGE_SIZE);
   const cursor = params.get("pageCursor");
-  const start = cursor === "page2" ? PAGE : 0;
+  const start = cursor && /^\d+$/.test(cursor) ? Number(cursor) : 0;
   const results = docs.slice(start, start + limit);
-  const nextPageCursor = start + limit < docs.length ? "page2" : null;
+  const nextPageCursor = start + limit < docs.length ? String(start + limit) : null;
   return json({ count: docs.length, nextPageCursor, results });
 }
 

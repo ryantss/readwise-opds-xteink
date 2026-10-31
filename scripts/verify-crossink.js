@@ -18,6 +18,7 @@ import { unzipSync } from "fflate";
 import sharp from "sharp";
 
 import { checkCrossInkHttpContract, deviceFilenameFor } from "./crossink-http-probe.js";
+import { FEED_PAGE_SIZE } from "../src/core/paging.js";
 import { FIXTURE_PASSWORD, FIXTURE_USERNAME, startFixtureCatalog } from "./fixture-catalog.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -57,6 +58,8 @@ const entriesOf = (output, kind) =>
   );
 
 const nextPageOf = (output) => /^next page: (.+)$/m.exec(output)?.[1] ?? "";
+const prevPageOf = (output) => /^prev page: (.+)$/m.exec(output)?.[1] ?? "";
+const bookHrefs = (output) => entriesOf(output, "BOOK").map((book) => book.href);
 const fieldOf = (output, name) => new RegExp(`^${name}: (.+)$`, "m").exec(output)?.[1] ?? "";
 
 function compareEntries(name, leftLabel, leftOutput, rightLabel, rightOutput) {
@@ -213,12 +216,69 @@ try {
     const page1 = await checkFeed(shelf.href, `${shelf.title} feed`);
     const shelfBooks = entriesOf(page1.crossink, "BOOK");
     check(shelfBooks.length > 0, `${shelf.title} feed has books (${shelfBooks.length} on page 1)`);
+    if (!baseUrlArg) {
+      check(
+        shelfBooks.length === FEED_PAGE_SIZE,
+        `${shelf.title} page 1 has ${FEED_PAGE_SIZE} books (got ${shelfBooks.length})`
+      );
+    }
+    check(!prevPageOf(page1.crossink), `${shelf.title} page 1 has next only (prev=${prevPageOf(page1.crossink) || "none"})`);
     console.log(shelfBooks.slice(0, 3).map((book) => `    ${book.title}`).join("\n"));
-    books.push(...shelfBooks.slice(0, Number(bookCount)));
 
     const nextPage = nextPageOf(page1.crossink);
     check(Boolean(nextPage), `${shelf.title} feed has a next-page link`);
-    if (nextPage) await checkFeed(nextPage, `${shelf.title} page 2`);
+    let page2Books = [];
+    if (nextPage) {
+      const page2 = await checkFeed(nextPage, `${shelf.title} page 2`);
+      page2Books = entriesOf(page2.crossink, "BOOK");
+      if (!baseUrlArg) {
+        check(page2Books.length === FEED_PAGE_SIZE, `${shelf.title} page 2 has ${FEED_PAGE_SIZE} books (got ${page2Books.length})`);
+      }
+      if (nextPageOf(page2.crossink)) {
+        check(
+          Boolean(prevPageOf(page2.crossink)),
+          `${shelf.title} page 2 has next and previous`
+        );
+      } else {
+        check(Boolean(prevPageOf(page2.crossink)), `${shelf.title} page 2 is last and has previous only`);
+      }
+      const page1Ids = bookHrefs(page1.crossink);
+      const page2Ids = bookHrefs(page2.crossink);
+      check(
+        page2Ids.every((href) => !page1Ids.includes(href)),
+        `${shelf.title} page 2 entries are distinct from page 1`
+      );
+      const prevFrom2 = prevPageOf(page2.crossink);
+      if (prevFrom2) {
+        const back = await checkFeed(prevFrom2, `${shelf.title} previous from page 2`);
+        check(
+          bookHrefs(back.crossink).join("\n") === page1Ids.join("\n"),
+          `${shelf.title} previous from page 2 returns page 1 entries`
+        );
+      }
+
+      if (nextPageOf(page2.crossink)) {
+        let current = page2;
+        let hop = 2;
+        let beforeLast = page2;
+        while (nextPageOf(current.crossink) && hop < 20) {
+          beforeLast = current;
+          hop += 1;
+          current = await checkFeed(nextPageOf(current.crossink), `${shelf.title} page ${hop}`);
+        }
+        check(!nextPageOf(current.crossink), `${shelf.title} last page has previous only (next=${nextPageOf(current.crossink) || "none"})`);
+        check(Boolean(prevPageOf(current.crossink)), `${shelf.title} last page has a previous link`);
+        const prevFromLast = prevPageOf(current.crossink);
+        if (prevFromLast) {
+          const backLast = await checkFeed(prevFromLast, `${shelf.title} previous from last`);
+          check(
+            bookHrefs(backLast.crossink).join("\n") === bookHrefs(beforeLast.crossink).join("\n"),
+            `${shelf.title} previous from last returns the earlier page`
+          );
+        }
+      }
+    }
+    books.push(...(page2Books.length ? page2Books : shelfBooks).slice(0, Number(bookCount)));
   }
 
   for (const { title, href } of books) {
