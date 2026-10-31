@@ -23,7 +23,7 @@ Preconditions:
 - A shelf walk or `fetch /opds/shortlist` has already produced a `BOOK` href. Do not invent an id that is not in the feed.
 - Host tools for `walk` are present.
 
-- **Follow a book link.** Run `./scripts/opds-cli walk --shelf shortlist --feature epub-acquisition`. The walk downloads the first page-1 `BOOK` href after paging checks.
+- **Follow a book link.** Run `./scripts/opds-cli walk --shelf shortlist --feature epub-acquisition`. The walk downloads the first page-2 `BOOK` href after paging checks.
 - **Targeted download.** `./scripts/opds-cli fetch /opds/books/shortlist-001.epub --out .cache/verify-opds/evidence/<run>/shortlist-001.epub` writes the bytes. Status `200`, `Content-Type` is `application/epub+zip`, `Content-Length` matches the body, and `Content-Disposition` is `attachment; filename="<id>.epub"` (ASCII, no raw title).
 - **Zip shape.** Bytes 30-38 of the file are `mimetype`.
 - **Device parsers.** `walk` runs `xml-check` on every `.xhtml`/`.opf`/`.ncx`/`.xml` and `opf-check-crossink` on `OEBPS/content.opf`. Both must exit 0. OPF output includes a non-empty `title:` and a `cover:` path.

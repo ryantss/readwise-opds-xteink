@@ -33,8 +33,9 @@ X3 (CrossPoint) ──OPDS/HTTPS + Basic auth──▶ Vercel function ──▶
 ```
 
 - `/opds` – navigation feed: Shortlist, Later, Archive.
-- `/opds/<shelf>` – acquisition feed, 50 entries a page, `rel="next"` paging on
-  Reader's own cursor.
+- `/opds/<shelf>` – acquisition feed, 10 entries a page, `rel="next"` /
+  `rel="previous"` paging. The public cursor is a page number (plus an optional
+  forward Readwise cursor) so previous stays short.
 - `/opds/books/<id>.epub` – fetch `html_content`, clean it to XHTML, transcode
   images, zip an EPUB 3 (with NCX fallback). Built per request; nothing stored.
 - Functional core (feed XML, HTML→XHTML, EPUB zip, auth) is pure and unit
@@ -46,7 +47,7 @@ Read from CrossPoint's source rather than assumed:
 
 | Finding | Consequence |
 | --- | --- |
-| OPDS parser keeps at most ~62 entries per page | 50 per page |
+| OPDS parser keeps at most ~62 entries per page | 10 per page |
 | Acquisition = `opds-spec.org/acquisition` rel + `application/epub+zip`; a `.epub` path is preferred | open-access rel, `/opds/books/<id>.epub` |
 | Basic auth only, sent only when username and password are both set | HTTP Basic, constant-time compare |
 | X3 panel is 528×792 | images fit inside 528×792 |

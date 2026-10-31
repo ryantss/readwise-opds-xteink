@@ -33,9 +33,9 @@ export function rootUrl(baseUrl) {
   return `${baseUrl}/opds`;
 }
 
-export function shelfUrl(baseUrl, shelf, cursor) {
+export function shelfUrl(baseUrl, shelf, token) {
   const url = `${baseUrl}/opds/${shelf.location}`;
-  return cursor ? `${url}?cursor=${encodeURIComponent(cursor)}` : url;
+  return token ? `${url}?cursor=${encodeURIComponent(token)}` : url;
 }
 
 export function bookUrl(baseUrl, id) {
@@ -64,20 +64,27 @@ ${entries.join("\n")}
 `;
 }
 
-export function buildFeed({ shelf, docs, baseUrl, nextCursor, updated }) {
+export function buildFeed({ shelf, docs, baseUrl, pageToken = null, nextToken = null, previousToken, updated }) {
   const root = escapeXml(rootUrl(baseUrl));
-  const next = nextCursor
-    ? `\n  <link rel="next" type="${ACQUISITION_FEED_TYPE}" href="${escapeXml(shelfUrl(baseUrl, shelf, nextCursor))}"/>`
+  const self = escapeXml(shelfUrl(baseUrl, shelf, pageToken));
+  const next = nextToken
+    ? `\n  <link rel="next" type="${ACQUISITION_FEED_TYPE}" href="${escapeXml(shelfUrl(baseUrl, shelf, nextToken))}"/>`
     : "";
+  // CrossInk matches rel="previous" exactly (OpdsParser.cpp 223) and adds a
+  // Previous Page row. undefined means page 1 (no link); null/string is a link.
+  const previous =
+    previousToken !== undefined
+      ? `\n  <link rel="previous" type="${ACQUISITION_FEED_TYPE}" href="${escapeXml(shelfUrl(baseUrl, shelf, previousToken))}"/>`
+      : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog">
   <id>urn:readwise-opds:${shelf.location}</id>
   <title>Readwise ${escapeXml(shelf.title)}</title>
   <updated>${escapeXml(updated)}</updated>
-  <link rel="self" type="${ACQUISITION_FEED_TYPE}" href="${escapeXml(shelfUrl(baseUrl, shelf))}"/>
+  <link rel="self" type="${ACQUISITION_FEED_TYPE}" href="${self}"/>
   <link rel="start" type="${NAVIGATION_FEED_TYPE}" href="${root}"/>
-  <link rel="up" type="${NAVIGATION_FEED_TYPE}" href="${root}"/>${next}
+  <link rel="up" type="${NAVIGATION_FEED_TYPE}" href="${root}"/>${previous}${next}
 ${docs.map((doc) => feedEntry(doc, baseUrl)).join("\n")}
 </feed>
 `;

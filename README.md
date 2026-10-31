@@ -15,8 +15,9 @@ grayscale baseline JPEGs sized for the X3's 528×792 panel, the preview image
 as cover. Runs as two serverless functions on Vercel; stores nothing.
 
 - `/opds` – menu: Inbox, Shortlist, Later, Archive (HTTP Basic auth throughout)
-- `/opds/inbox`, `/opds/shortlist`, `/opds/later`, `/opds/archive` – 50 per
-  page, newest saved first (Reader's order). Inbox is Reader's `new` location.
+- `/opds/inbox`, `/opds/shortlist`, `/opds/later`, `/opds/archive` – 10 per
+  page, newest saved first (Reader's order), with `rel="next"` and
+  `rel="previous"`. Inbox is Reader's `new` location.
 - `/opds/books/<id>.epub` – one article as EPUB
 
 PDFs, videos and highlights are left out – CrossPoint can't open them.
@@ -43,7 +44,7 @@ Taken on an Xteink X3 running CrossPoint 1.6.5.
     </td>
     <td width="50%" valign="top">
       <img src="docs/screenshots/4-shortlist.png" alt="Shortlist feed listing article titles and authors">
-      <br><sub><b>Shortlist.</b> Articles with their authors, 50 to a page. Download fetches the article as an EPUB.</sub>
+      <br><sub><b>Shortlist.</b> Articles with their authors, 10 to a page. Download fetches the article as an EPUB.</sub>
     </td>
   </tr>
 </table>
