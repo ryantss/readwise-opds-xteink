@@ -131,7 +131,7 @@ const crosspointBin = buildChecks("build-crosspoint-checks.sh", "CrossPoint");
 
 const work = mkdtempSync(join(tmpdir(), "readwise-opds-crossink-"));
 const authorization = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
-const SHELVES = ["Shortlist", "Later", "Archive"];
+const SHELVES = ["Inbox", "Shortlist", "Later", "Archive"];
 const CROSSINK_OPDS = "opds-check-crossink";
 const CROSSPOINT_OPDS = ["opds-check-1.6.5", "opds-check"];
 

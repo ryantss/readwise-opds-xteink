@@ -10,7 +10,9 @@ export const FIXTURE_USERNAME = "fixture-reader";
 export const FIXTURE_PASSWORD = "fixture-password";
 
 const PAGE = 50;
-const SHELF_SIZES = { shortlist: 51, later: 51, archive: 51 };
+// Keys are Reader API locations. Inbox is `new`; OPDS ids/titles use the slug.
+const SHELF_SIZES = { new: 51, shortlist: 51, later: 51, archive: 51 };
+const SHELF_SLUG = { new: "inbox" };
 const IMAGE_URL = "https://cdn.example/cover.png";
 const PUBLIC_LOOKUP = async () => [{ address: "93.184.216.34", family: 4 }];
 
@@ -95,23 +97,24 @@ export async function startFixtureCatalog({ port = 0 } = {}) {
 }
 
 function docsFor(location, count) {
+  const slug = SHELF_SLUG[location] ?? location;
   return Array.from({ length: count }, (_, index) => {
     const n = String(index + 1).padStart(3, "0");
     const first = index === 0;
     return {
-      id: `${location}-${n}`,
-      title: first && location === "shortlist" ? LONG_TITLE : `${titleCase(location)} article ${n} & notes`,
-      author: first && location === "later" ? LONG_AUTHOR : first ? "Émile Zola" : `${titleCase(location)} Author ${n}`,
+      id: `${slug}-${n}`,
+      title: first && slug === "shortlist" ? LONG_TITLE : `${titleCase(slug)} article ${n} & notes`,
+      author: first && slug === "later" ? LONG_AUTHOR : first ? "Émile Zola" : `${titleCase(slug)} Author ${n}`,
       category: "article",
       site_name: "Fixture Blog",
       word_count: 500 + index,
       summary: "A short fixture summary <with> markup.",
-      source_url: `https://cdn.example/${location}/${n}`,
+      source_url: `https://cdn.example/${slug}/${n}`,
       image_url: IMAGE_URL,
       saved_at: `2026-10-01T12:${String(index % 60).padStart(2, "0")}:00.000000+00:00`,
       updated_at: "2026-10-02T00:00:00.000000+00:00",
       language: "en",
-      html_content: `<p>Fixture body for ${location} ${n}.</p><figure><img alt="chart" src="${IMAGE_URL}"/></figure>`
+      html_content: `<p>Fixture body for ${slug} ${n}.</p><figure><img alt="chart" src="${IMAGE_URL}"/></figure>`
     };
   });
 }

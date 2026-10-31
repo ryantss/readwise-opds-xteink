@@ -54,7 +54,7 @@ async function fetchTimed(url, headers = { authorization }) {
 }
 
 const PARSERS = ["opds-check-1.6.5", "opds-check"];
-const SHELVES = ["Shortlist", "Later", "Archive"];
+const SHELVES = ["Inbox", "Shortlist", "Later", "Archive"];
 
 // Fetches a feed and parses it with both CrossPoint parsers; returns the
 // develop parser's output (a superset of what 1.6.5 prints).
