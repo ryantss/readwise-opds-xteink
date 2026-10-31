@@ -103,7 +103,12 @@ function docsFor(location, count) {
     const first = index === 0;
     return {
       id: `${slug}-${n}`,
-      title: first && slug === "shortlist" ? LONG_TITLE : `${titleCase(slug)} article ${n} & notes`,
+      title:
+        first && slug === "shortlist"
+          ? LONG_TITLE
+          : first && slug === "inbox"
+            ? 'Why $FOO failed: “evals” — a report'
+            : `${titleCase(slug)} article ${n} & notes`,
       author: first && slug === "later" ? LONG_AUTHOR : first ? "Émile Zola" : `${titleCase(slug)} Author ${n}`,
       category: "article",
       site_name: "Fixture Blog",

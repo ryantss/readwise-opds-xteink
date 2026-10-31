@@ -36,6 +36,7 @@ Preconditions:
 
 ## Gotchas
 
+- Each feed must send `Content-Length` equal to the body. A chunked feed with no length is what production served to the X3; CrossInk maps a dropped chunked body to "Failed to fetch feed".
 - CrossInk `OpdsParser` keeps at most `MAX_OPDS_FEED_ENTRIES` (50) entries. A feed that emits 51 without paging will parse as `truncated: yes` and drop the rest. Report that. Do not lower the expected count to make the walk pass.
 - The first Shortlist title and the first Later author in the fixture are padded past CrossInk's 160-character title cap and 120-character author cap. Assert entry counts and hrefs, not full-string title equality against the Atom XML.
 - `?cursor=` on the shelf URL is the Readwise page cursor, forwarded as `pageCursor`. The fixture understands `page2`. A made-up cursor returns the first page and will fail the page-2 count.

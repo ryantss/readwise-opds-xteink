@@ -159,6 +159,7 @@ If a launch or walk fails, run `stop` anyway so a broken pid does not hold the p
 ./scripts/opds-cli stop
 npm run opds -- launch
 npm run verify:crossink
+npm run verify:crossink-limits
 ```
 
 `walk --all` and `npm run verify:crossink` are the same PR #3 harness (`scripts/verify-crossink.js`). Prefer the CLI when you already launched an instance, so doctor and cleanup stay in one place.

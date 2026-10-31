@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { unzipSync } from "fflate";
 import sharp from "sharp";
 
+import { checkCrossInkHttpContract, deviceFilenameFor } from "./crossink-http-probe.js";
 import { FIXTURE_PASSWORD, FIXTURE_USERNAME, startFixtureCatalog } from "./fixture-catalog.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -770,6 +771,19 @@ async function cmdWalk(flags) {
     writeFileSync(join(evidenceDir, `${name}.opds.txt`), parsed.output);
     const fields = parseOpdsOutput(parsed.output);
     check(`${name} status`, response.status === 200, `${response.status} in ${response.ms} ms`);
+    const contract = checkCrossInkHttpContract({
+      url,
+      status: response.status,
+      headers: response.headers,
+      bytes: response.bytes,
+      kind: "feed"
+    });
+    check(
+      `${name} CrossInk HTTP contract`,
+      contract.ok,
+      contract.ok ? contract.notes.join(", ") : contract.failures.join("; ")
+    );
+    check(`${name} within 60s`, response.ms <= 60_000, `${response.ms} ms (HTTP_TIMEOUT_MS=60000)`);
     check(`${name} CrossInk parse`, parsed.ok, parsed.ok ? `truncated=${fields.truncated}` : parsed.output);
     return { response, fields };
   };
@@ -821,6 +835,24 @@ async function cmdWalk(flags) {
       `download ${label}`,
       response.status === 200,
       `${response.status}, ${(response.bytes.length / 1024).toFixed(0)} KB, ${response.ms} ms`
+    );
+    const contract = checkCrossInkHttpContract({
+      url: book.href,
+      status: response.status,
+      headers: response.headers,
+      bytes: response.bytes,
+      kind: "book"
+    });
+    check(
+      `download ${label} CrossInk HTTP contract`,
+      contract.ok,
+      contract.ok ? contract.notes.join(", ") : contract.failures.join("; ")
+    );
+    const deviceName = deviceFilenameFor(book);
+    check(
+      `download ${label} device filename`,
+      deviceName.endsWith(".epub") && deviceName.length <= 155,
+      deviceName
     );
     if (response.status !== 200) continue;
     const dest = join(evidenceDir, book.href.split("/").at(-1).replace(/\.epub$/, ""));

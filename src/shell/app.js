@@ -2,6 +2,7 @@ import { articleToXhtmlBody, chapterDocument, collectImageUrls } from "../core/a
 import { isAuthorized } from "../core/auth.js";
 import { buildEpub } from "../core/epub.js";
 import { buildFeed, buildNavigationFeed, findShelf, isReadable, readwiseLocation } from "../core/feed.js";
+import { contentDisposition, epubFilename } from "../core/filename.js";
 import { fetchEpubImages } from "./images.js";
 import { createReadwiseClient, ReadwiseError } from "./readwise.js";
 
@@ -51,7 +52,7 @@ export function createApp({ env, fetch = globalThis.fetch, lookup, now = () => n
 
         if (!location) {
           const xml = buildNavigationFeed({ baseUrl: baseUrl(request), updated });
-          return new Response(xml, { headers: { "Content-Type": NAVIGATION_CONTENT_TYPE, ...noStore } });
+          return bytesResponse(xml, { "Content-Type": NAVIGATION_CONTENT_TYPE, ...noStore });
         }
 
         const shelf = findShelf(location);
@@ -65,7 +66,7 @@ export function createApp({ env, fetch = globalThis.fetch, lookup, now = () => n
         });
         const xml = buildFeed({ shelf, docs: docs.filter(isReadable), baseUrl: baseUrl(request), nextCursor, updated });
         log({ event: "feed", location, cursor, docs: docs.length });
-        return new Response(xml, { headers: { "Content-Type": ACQUISITION_CONTENT_TYPE, ...noStore } });
+        return bytesResponse(xml, { "Content-Type": ACQUISITION_CONTENT_TYPE, ...noStore });
       });
     },
 
@@ -81,7 +82,7 @@ export function createApp({ env, fetch = globalThis.fetch, lookup, now = () => n
           headers: {
             "Content-Type": "application/epub+zip",
             "Content-Length": String(epub.length),
-            "Content-Disposition": contentDisposition(`${doc.title?.trim() || "Untitled"}.epub`),
+            "Content-Disposition": contentDisposition(epubFilename(id)),
             "Cache-Control": "private, no-store"
           }
         });
@@ -129,9 +130,15 @@ function isoSeconds(value) {
   return (Number.isNaN(date.getTime()) ? new Date(0) : date).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
-function contentDisposition(filename) {
-  const ascii = filename.replace(/[^\x20-\x7e]|["\\]/g, " ");
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+// Known-length body so Vercel/Node cannot switch the feed to chunked TE.
+// CrossInk's wolfSSL client can decode chunked, but HttpDownloader then has
+// no Content-Length (progress stays at 0) and any mid-stream drop becomes
+// STR_FETCH_FEED_FAILED via responseComplete() == false.
+function bytesResponse(body, headers) {
+  const bytes = typeof body === "string" ? Buffer.from(body) : body;
+  return new Response(bytes, {
+    headers: { ...headers, "Content-Length": String(bytes.byteLength ?? bytes.length) }
+  });
 }
 
 function defaultLog(entry) {

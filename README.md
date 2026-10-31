@@ -65,6 +65,8 @@ npx vercel deploy --prod
 
 `OPDS_USERNAME`/`OPDS_PASSWORD` are what the reader sends; pick a long random
 password. Optional `BASE_URL` overrides the origin used in feed links.
+Functions are pinned to `sin1` (Singapore) in `vercel.json` so an X3 in
+Singapore is not waiting on `iad1`.
 
 ## Reader
 
@@ -100,6 +102,8 @@ npm run verify:crosspoint    # CrossPoint OpdsParser 1.6.5 + develop, ContentOpf
 npm run verify:crossink      # CrossInk OpdsParser + ContentOpfParser, pinned to v1.6.1
                              # (9914146eeae7b46b300f475a16c32426fc02ec1f); also
                              # compares the same feeds against CrossPoint
+npm run verify:crossink-limits  # HTTP/1.1 probe of firmware limits (chunked vs
+                             # Content-Length, Content-Disposition, 60s timeout)
 ```
 
 To walk a live deployment instead:

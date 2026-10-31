@@ -24,7 +24,7 @@ Preconditions:
 - Host tools for `walk` are present.
 
 - **Follow a book link.** Run `./scripts/opds-cli walk --shelf shortlist --feature epub-acquisition`. The walk downloads the first page-1 `BOOK` href after paging checks.
-- **Targeted download.** `./scripts/opds-cli fetch /opds/books/shortlist-001.epub --out .cache/verify-opds/evidence/<run>/shortlist-001.epub` writes the bytes. Status `200`, `Content-Type` is `application/epub+zip`.
+- **Targeted download.** `./scripts/opds-cli fetch /opds/books/shortlist-001.epub --out .cache/verify-opds/evidence/<run>/shortlist-001.epub` writes the bytes. Status `200`, `Content-Type` is `application/epub+zip`, `Content-Length` matches the body, and `Content-Disposition` is `attachment; filename="<id>.epub"` (ASCII, no raw title).
 - **Zip shape.** Bytes 30-38 of the file are `mimetype`.
 - **Device parsers.** `walk` runs `xml-check` on every `.xhtml`/`.opf`/`.ncx`/`.xml` and `opf-check-crossink` on `OEBPS/content.opf`. Both must exit 0. OPF output includes a non-empty `title:` and a `cover:` path.
 - **X3 images.** `images.json` lists every `.jpg`. Each row has `format=jpeg`, `progressive=false`, `width<=528`, `height<=792`. A progressive JPEG or a pixel edge above the panel is a failure.
@@ -33,6 +33,8 @@ Preconditions:
 ## Gotchas
 
 - Images that fail to fetch or decode are omitted from the EPUB. The fixture cover URL is `https://cdn.example/cover.png` and must be present as `OEBPS/images/cover.jpg`. A missing cover here is a bug, not an allowed skip.
+- CrossInk names the SD file from the feed title via `StringUtils::sanitizeFilename` (150 bytes, FAT32-illegal chars become `_`). It does not read `Content-Disposition`. The server still sends a short ASCII `filename=` so SecureHttpClient's 4096-byte header line cap cannot trip.
+- `walk` and `verify:crossink` run the CrossInk HTTP contract (Content-Length, safe disposition, 60s timeout, `META-INF/container.xml`). `npm run verify:crossink-limits` is the before/after probe (legacy chunked+title CD must fail; the fixed app must pass).
 - CrossInk title truncation on the feed does not change the OPF title, which comes from the article document. Compare OPF `title:` to the document, not to the truncated `BOOK` line.
 - `walk --all` also builds CrossPoint parsers and compares OPF fields. A CrossPoint build failure is printed; it does not excuse a CrossInk OPF failure.
 - Unknown ids and unreadable categories (PDF, video) are `404`. That is not this feature; do not swap in a 404 and call acquisition verified.
