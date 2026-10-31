@@ -19,7 +19,7 @@ The catalog is consumed by CrossInk's OPDS browser on an Xteink X3 (and by Cross
 ## Driving conventions
 
 - Start every recipe from the baseline state unless its preconditions say otherwise.
-- Treat route paths as the stable handles: `/opds`, `/opds/shortlist`, `/opds/later`, `/opds/archive`, `/opds/books/<id>.epub`.
+- Treat route paths as the stable handles: `/opds`, `/opds/inbox`, `/opds/shortlist`, `/opds/later`, `/opds/archive`, `/opds/books/<id>.epub`.
 - Run catalog actions through `./scripts/opds-cli`.
 - Follow `rel="next"` (or CrossInk's `next page:` line). Do not invent cursors.
 - Restore nothing after a drive: the fixture is read-only and in-memory.
@@ -49,7 +49,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 ## Features
 
-- [Authenticated root menu](./authenticated-root-menu.md) covers opening the catalog with Basic auth and listing Shortlist, Later and Archive.
+- [Authenticated root menu](./authenticated-root-menu.md) covers opening the catalog with Basic auth and listing Inbox, Shortlist, Later and Archive.
 - [Shelf feeds and paging](./shelf-feeds-and-paging.md) covers a shelf of 50 articles, the next-page link, and CrossInk's 50-entry cap.
 - [EPUB acquisition](./epub-acquisition.md) covers downloading an article as an EPUB with X3-sized baseline JPEGs.
 - [Auth rejection](./auth-rejection.md) covers requests without credentials and with the wrong password.

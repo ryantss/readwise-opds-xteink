@@ -65,10 +65,33 @@ test("root feed is a navigation menu and calls no Readwise API", async () => {
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("content-type"), "application/atom+xml;profile=opds-catalog;kind=navigation; charset=utf-8");
+  assert.match(xml, /href="https:\/\/opds.example.com\/opds\/inbox"/);
   assert.match(xml, /href="https:\/\/opds.example.com\/opds\/shortlist"/);
   assert.match(xml, /href="https:\/\/opds.example.com\/opds\/later"/);
   assert.match(xml, /href="https:\/\/opds.example.com\/opds\/archive"/);
+  assert.doesNotMatch(xml, /\/opds\/new"/);
   assert.equal(calls.length, 0);
+});
+
+test("inbox shelf lists documents from the Reader new location", async () => {
+  const { fetch, calls } = fakeFetch([
+    [
+      "https://readwise.io/api/v3/list/",
+      () => json({ count: 1, nextPageCursor: "cur2", results: [article] })
+    ]
+  ]);
+  const app = createApp({ env, fetch, now: () => new Date("2026-10-24T01:02:03Z") });
+
+  const response = await app.feed(new Request("https://opds.example.com/api/opds?location=inbox", { headers: auth }));
+  const xml = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(xml, /<title>Readwise Inbox<\/title>/);
+  assert.match(xml, /href="https:\/\/opds.example.com\/opds\/inbox\?cursor=cur2"/);
+
+  const listUrl = new URL(calls[0].url);
+  assert.equal(listUrl.searchParams.get("location"), "new");
+  assert.equal(listUrl.searchParams.get("limit"), "50");
 });
 
 test("shelf feed lists readable documents from that location with a next-page link", async () => {
@@ -119,8 +142,10 @@ test("unknown shelf is a 404 without calling Readwise", async () => {
   const app = createApp({ env, fetch });
 
   const response = await app.feed(new Request("https://x/api/opds?location=feed", { headers: auth }));
+  const asNew = await app.feed(new Request("https://x/api/opds?location=new", { headers: auth }));
 
   assert.equal(response.status, 404);
+  assert.equal(asNew.status, 404);
   assert.equal(calls.length, 0);
 });
 

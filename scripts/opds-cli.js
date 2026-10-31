@@ -30,8 +30,8 @@ const cliPath = fileURLToPath(import.meta.url);
 const DEFAULT_STATE = join(repoRoot, ".cache/verify-opds/instance.json");
 const DEFAULT_PORT = 8788;
 const EVIDENCE_ROOT = join(repoRoot, ".cache/verify-opds/evidence");
-const SHELVES = ["shortlist", "later", "archive"];
-const SHELF_TITLES = ["Shortlist", "Later", "Archive"];
+const SHELVES = ["inbox", "shortlist", "later", "archive"];
+const SHELF_TITLES = ["Inbox", "Shortlist", "Later", "Archive"];
 const FIXTURE_PAGE1_BOOKS = 50;
 const FIXTURE_PAGE2_BOOKS = 1;
 const X3 = { width: 528, height: 792 };
@@ -98,7 +98,7 @@ Checks:
   process   State pid is alive
   build     cmdline is opds-cli.js serve, cwd is this repo, kind is
             readwise-opds-fixture, /opds is a Readwise navigation feed that
-            lists Shortlist, Later and Archive
+            lists Inbox, Shortlist, Later and Archive
   port      lsof shows that pid LISTENs on the recorded 127.0.0.1 port
   auth      GET /opds without credentials is 401 with
             WWW-Authenticate: Basic realm="Readwise OPDS";
@@ -114,7 +114,7 @@ feed with opds-check-crossink, then the EPUB with xml-check and
 opf-check-crossink, and checks every JPEG is baseline and within 528x792.
 
 Flags:
-  --shelf SHELF       shortlist | later | archive (default: shortlist)
+  --shelf SHELF       inbox | shortlist | later | archive (default: shortlist)
   --books N           EPUBs to download from page 1 (default: 1)
   --feature ID        Stored in evidence meta.json
   --all               Run scripts/verify-crossink.js against this catalog
@@ -518,7 +518,7 @@ async function collectDoctor(stateFile) {
       authed.status === 200 &&
       navType.includes("profile=opds-catalog;kind=navigation") &&
       authed.text.includes("<title>Readwise</title>") &&
-      titles.length === 3;
+      titles.length === SHELF_TITLES.length;
     authOk = unauthOk && authed.status === 200;
     authDetail = unauthOk
       ? `401 without credentials (WWW-Authenticate ${www}); ${authed.status} with ${state.username}`

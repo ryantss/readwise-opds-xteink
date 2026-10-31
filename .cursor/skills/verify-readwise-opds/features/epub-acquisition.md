@@ -13,7 +13,7 @@ Choosing an article downloads it as an EPUB 3 built on the fly: cleaned XHTML, a
 ## How to get to it (user POV)
 
 - From a shelf page, choose an article. CrossInk follows the acquisition link `rel="http://opds-spec.org/acquisition/open-access"` to `/opds/books/<id>.epub`.
-- Fixture ids are `<shelf>-001` through `<shelf>-051`. The first Shortlist book is `/opds/books/shortlist-001.epub`.
+- Fixture ids are `<shelf>-001` through `<shelf>-051`. The first Inbox book is `/opds/books/inbox-001.epub`.
 
 ## Driving it with opds-cli
 

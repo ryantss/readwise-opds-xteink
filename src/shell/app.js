@@ -1,7 +1,7 @@
 import { articleToXhtmlBody, chapterDocument, collectImageUrls } from "../core/article.js";
 import { isAuthorized } from "../core/auth.js";
 import { buildEpub } from "../core/epub.js";
-import { buildFeed, buildNavigationFeed, findShelf, isReadable } from "../core/feed.js";
+import { buildFeed, buildNavigationFeed, findShelf, isReadable, readwiseLocation } from "../core/feed.js";
 import { fetchEpubImages } from "./images.js";
 import { createReadwiseClient, ReadwiseError } from "./readwise.js";
 
@@ -58,7 +58,11 @@ export function createApp({ env, fetch = globalThis.fetch, lookup, now = () => n
         if (!shelf) return new Response("Not found\n", { status: 404 });
 
         const cursor = params.get("cursor");
-        const { docs, nextCursor } = await readwise.listLocation({ location, cursor, limit: FEED_PAGE_SIZE });
+        const { docs, nextCursor } = await readwise.listLocation({
+          location: readwiseLocation(shelf),
+          cursor,
+          limit: FEED_PAGE_SIZE
+        });
         const xml = buildFeed({ shelf, docs: docs.filter(isReadable), baseUrl: baseUrl(request), nextCursor, updated });
         log({ event: "feed", location, cursor, docs: docs.length });
         return new Response(xml, { headers: { "Content-Type": ACQUISITION_CONTENT_TYPE, ...noStore } });

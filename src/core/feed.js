@@ -4,8 +4,10 @@ import { escapeXml } from "./xml.js";
 // audio have no EPUB-able body, and CrossPoint can't open them anyway.
 const READABLE_CATEGORIES = new Set(["article", "email", "rss", "tweet", "note"]);
 
-// Reader locations offered as shelves, in menu order.
+// Reader locations offered as shelves, in menu order. Inbox is Reader's `new`
+// location; the OPDS path stays /opds/inbox so the device never sees `new`.
 const SHELVES = [
+  { location: "inbox", title: "Inbox", readwiseLocation: "new" },
   { location: "shortlist", title: "Shortlist" },
   { location: "later", title: "Later" },
   { location: "archive", title: "Archive" }
@@ -21,6 +23,10 @@ export function isReadable(doc) {
 
 export function findShelf(location) {
   return SHELVES.find((shelf) => shelf.location === location) ?? null;
+}
+
+export function readwiseLocation(shelf) {
+  return shelf.readwiseLocation ?? shelf.location;
 }
 
 export function rootUrl(baseUrl) {

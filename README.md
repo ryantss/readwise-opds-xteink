@@ -9,14 +9,14 @@ for reading on an Xteink e-reader running
 [PLAN.md](PLAN.md) (options, design, firmware constraints, verification).
 The code is one way to realise it.
 
-Browse Shortlist, Later and Archive from the reader's OPDS browser and download
-any article as an EPUB built on the fly: cleaned XHTML, images as grayscale
-baseline JPEGs sized for the X3's 528×792 panel, the preview image as cover.
-Runs as two serverless functions on Vercel; stores nothing.
+Browse Inbox, Shortlist, Later and Archive from the reader's OPDS browser and
+download any article as an EPUB built on the fly: cleaned XHTML, images as
+grayscale baseline JPEGs sized for the X3's 528×792 panel, the preview image
+as cover. Runs as two serverless functions on Vercel; stores nothing.
 
-- `/opds` – menu: Shortlist, Later, Archive (HTTP Basic auth throughout)
-- `/opds/shortlist`, `/opds/later`, `/opds/archive` – 50 per page, newest saved
-  first (Reader's order)
+- `/opds` – menu: Inbox, Shortlist, Later, Archive (HTTP Basic auth throughout)
+- `/opds/inbox`, `/opds/shortlist`, `/opds/later`, `/opds/archive` – 50 per
+  page, newest saved first (Reader's order). Inbox is Reader's `new` location.
 - `/opds/books/<id>.epub` – one article as EPUB
 
 PDFs, videos and highlights are left out – CrossPoint can't open them.

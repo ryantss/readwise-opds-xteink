@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildFeed, buildNavigationFeed, findShelf, isReadable } from "../src/core/feed.js";
+import { buildFeed, buildNavigationFeed, findShelf, isReadable, readwiseLocation } from "../src/core/feed.js";
 
 const baseUrl = "https://opds.example.com";
 const shortlist = findShelf("shortlist");
@@ -83,7 +83,8 @@ test("buildFeed uses an untitled placeholder so the device never drops an entry"
   assert.match(xml, /<title>Untitled<\/title>/);
 });
 
-test("findShelf knows Shortlist, Later and Archive, and nothing else", () => {
+test("findShelf knows Inbox, Shortlist, Later and Archive, and nothing else", () => {
+  assert.deepEqual(findShelf("inbox"), { location: "inbox", title: "Inbox", readwiseLocation: "new" });
   assert.deepEqual(findShelf("shortlist"), { location: "shortlist", title: "Shortlist" });
   assert.deepEqual(findShelf("later"), { location: "later", title: "Later" });
   assert.deepEqual(findShelf("archive"), { location: "archive", title: "Archive" });
@@ -91,7 +92,14 @@ test("findShelf knows Shortlist, Later and Archive, and nothing else", () => {
   assert.equal(findShelf("new"), null);
 });
 
-test("buildNavigationFeed lists the three shelves as acquisition subsections", () => {
+test("readwiseLocation maps Inbox to Reader's new location", () => {
+  assert.equal(readwiseLocation(findShelf("inbox")), "new");
+  assert.equal(readwiseLocation(findShelf("shortlist")), "shortlist");
+  assert.equal(readwiseLocation(findShelf("later")), "later");
+  assert.equal(readwiseLocation(findShelf("archive")), "archive");
+});
+
+test("buildNavigationFeed lists the four shelves as acquisition subsections", () => {
   const xml = buildNavigationFeed({ baseUrl, updated: "2026-10-24T00:00:00Z" });
 
   assert.match(xml, /<title>Readwise<\/title>/);
@@ -100,6 +108,7 @@ test("buildNavigationFeed lists the three shelves as acquisition subsections", (
   assert.deepEqual(
     entries.map(([, title, href]) => [title, href]),
     [
+      ["Inbox", "https://opds.example.com/opds/inbox"],
       ["Shortlist", "https://opds.example.com/opds/shortlist"],
       ["Later", "https://opds.example.com/opds/later"],
       ["Archive", "https://opds.example.com/opds/archive"]
@@ -115,4 +124,18 @@ test("buildFeed titles the feed by shelf and links back up to the root", () => {
   assert.match(xml, /<link rel="start" type="application\/atom\+xml;profile=opds-catalog;kind=navigation" href="https:\/\/opds.example.com\/opds"\/>/);
   assert.match(xml, /<link rel="up" type="application\/atom\+xml;profile=opds-catalog;kind=navigation" href="https:\/\/opds.example.com\/opds"\/>/);
   assert.match(xml, /href="https:\/\/opds.example.com\/opds\/later\?cursor=c2"/);
+});
+
+test("buildFeed titles Inbox and pages on /opds/inbox", () => {
+  const xml = buildFeed({
+    shelf: findShelf("inbox"),
+    docs: [article],
+    baseUrl,
+    nextCursor: "c2",
+    updated: "2026-10-24T00:00:00Z"
+  });
+
+  assert.match(xml, /<id>urn:readwise-opds:inbox<\/id>\s*<title>Readwise Inbox<\/title>/);
+  assert.match(xml, /<link rel="self" type="application\/atom\+xml;profile=opds-catalog;kind=acquisition" href="https:\/\/opds.example.com\/opds\/inbox"\/>/);
+  assert.match(xml, /href="https:\/\/opds.example.com\/opds\/inbox\?cursor=c2"/);
 });

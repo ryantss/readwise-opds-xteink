@@ -4,6 +4,7 @@ Each shelf is an OPDS acquisition feed of readable Reader documents, 50 entries 
 
 ## Sub-features
 
+- `shelf-inbox` lists Inbox articles (Reader `new` location) as `BOOK` entries with EPUB acquisition links.
 - `shelf-shortlist` lists Shortlist articles as `BOOK` entries with EPUB acquisition links.
 - `shelf-later` lists Later the same way.
 - `shelf-archive` lists Archive the same way.
@@ -13,7 +14,7 @@ Each shelf is an OPDS acquisition feed of readable Reader documents, 50 entries 
 
 ## How to get to it (user POV)
 
-- From the root menu, open Shortlist, Later or Archive. CrossInk `GET`s `/opds/shortlist`, `/opds/later` or `/opds/archive`.
+- From the root menu, open Inbox, Shortlist, Later or Archive. CrossInk `GET`s `/opds/inbox`, `/opds/shortlist`, `/opds/later` or `/opds/archive`.
 - On a full page, choose the next-page control. CrossInk `GET`s the `rel="next"` href (`/opds/<shelf>?cursor=<cursor>`).
 - The fixture cursor for page 2 is `page2`. Live Readwise cursors are opaque; never invent one.
 
@@ -25,12 +26,12 @@ Preconditions:
 - The fixture catalog is the one under test (51 documents per shelf, page size 50).
 - Host tools for `walk` are present (`clang++` or `g++`, libexpat).
 
-- **Open Shortlist.** Run `./scripts/opds-cli walk --shelf shortlist --feature shelf-feeds-and-paging`. The walk fetches `/opds`, follows the Shortlist `NAV` href, then follows `next page:`.
+- **Open Inbox.** Run `./scripts/opds-cli walk --shelf inbox --feature shelf-feeds-and-paging`. The walk fetches `/opds`, follows the Inbox `NAV` href, then follows `next page:`.
 - **Page 1 size.** Evidence `<shelf>-page1.opds.txt` has `books: 50` and `truncated: no`. A page with more than 50 `BOOK` lines, or `truncated: yes`, is a failure: CrossInk's `MAX_OPDS_FEED_ENTRIES` is 50 and this server must page at that cap, not hide the overflow.
-- **Next page.** The same file has a non-empty `next page:` URL containing `/opds/shortlist?cursor=`.
+- **Next page.** The same file has a non-empty `next page:` URL containing `/opds/inbox?cursor=`.
 - **Page 2.** `<shelf>-page2.opds.txt` has `books: 1` and a 200 status. An empty page 2 after a next link is a failure.
-- **Other shelves.** Repeat with `--shelf later` and `--shelf archive`. Do not mark those entry points verified from the Shortlist walk alone.
-- **Targeted fetch.** `./scripts/opds-cli fetch /opds/shortlist --out .cache/verify-opds/evidence/<run>/shortlist.xml` is the HTTP-only form of page 1. Still parse it with CrossInk before calling the shelf verified.
+- **Other shelves.** Repeat with `--shelf shortlist`, `--shelf later` and `--shelf archive`. Do not mark those entry points verified from the Inbox walk alone.
+- **Targeted fetch.** `./scripts/opds-cli fetch /opds/inbox --out .cache/verify-opds/evidence/<run>/inbox.xml` is the HTTP-only form of page 1. Still parse it with CrossInk before calling the shelf verified.
 - **Proof.** `walk.json` has passing steps for page 1 count, `truncated=no`, next page, and page 2 count. The observable end state is 50 CrossInk `BOOK` entries, a next URL, and one `BOOK` on page 2.
 
 ## Gotchas

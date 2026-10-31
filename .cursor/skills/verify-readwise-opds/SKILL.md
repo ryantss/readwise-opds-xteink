@@ -58,7 +58,7 @@ A second `launch` against the same state file is refused while that pid is alive
 One read-only check. Run it before the first drive, after any failed drive, and whenever the instance looks off. Pass means every line below is true:
 
 - **process:** the pid in `.cache/verify-opds/instance.json` is alive
-- **build:** that pid's cmdline is `opds-cli.js serve`, its cwd is this repo, `kind` is `readwise-opds-fixture`, and `GET /opds` (authenticated) is a Readwise navigation feed listing Shortlist, Later and Archive
+- **build:** that pid's cmdline is `opds-cli.js serve`, its cwd is this repo, `kind` is `readwise-opds-fixture`, and `GET /opds` (authenticated) is a Readwise navigation feed listing Inbox, Shortlist, Later and Archive
 - **port:** `lsof` shows that pid LISTENs on the recorded `127.0.0.1` port
 - **auth:** `GET /opds` without credentials is `401` with `WWW-Authenticate: Basic realm="Readwise OPDS"`; with fixture credentials it is `200`
 
@@ -71,7 +71,7 @@ Stable handles are route paths, not CSS or coordinates.
 | User action on the X3 | Route | CLI |
 | --- | --- | --- |
 | Open the catalog (OPDS Browser) | `/opds` | `./scripts/opds-cli fetch /opds` |
-| Open Shortlist / Later / Archive | `/opds/shortlist`, `/opds/later`, `/opds/archive` | `./scripts/opds-cli fetch /opds/shortlist` |
+| Open Inbox / Shortlist / Later / Archive | `/opds/inbox`, `/opds/shortlist`, `/opds/later`, `/opds/archive` | `./scripts/opds-cli fetch /opds/inbox` |
 | Next page | `/opds/<shelf>?cursor=<cursor>` | Follow `rel="next"` from the feed, or the `next page:` line from CrossInk |
 | Download an article | `/opds/books/<id>.epub` | `./scripts/opds-cli fetch /opds/books/shortlist-001.epub --out FILE` |
 | Browse without credentials | `/opds` | `./scripts/opds-cli fetch /opds --no-auth --expect-status 401` |
@@ -82,7 +82,7 @@ The CrossInk user path (root -> one shelf -> next page -> EPUB), through the dev
 ./scripts/opds-cli walk --shelf shortlist --feature shelf-feeds-and-paging
 ```
 
-`--shelf` is `shortlist`, `later`, or `archive`. `walk` builds `scripts/build-crossink-checks.sh` (CrossInk pin `v1.6.1`, `9914146eeae7b46b300f475a16c32426fc02ec1f`) and runs `opds-check-crossink`, `xml-check`, and `opf-check-crossink`.
+`--shelf` is `inbox`, `shortlist`, `later`, or `archive`. `walk` builds `scripts/build-crossink-checks.sh` (CrossInk pin `v1.6.1`, `9914146eeae7b46b300f475a16c32426fc02ec1f`) and runs `opds-check-crossink`, `xml-check`, and `opf-check-crossink`.
 
 The full PR #3 harness (every shelf, next page, one EPUB each, plus CrossPoint comparison when those binaries build):
 
