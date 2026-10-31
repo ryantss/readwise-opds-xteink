@@ -65,6 +65,7 @@ test("root feed is a navigation menu and calls no Readwise API", async () => {
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("content-type"), "application/atom+xml;profile=opds-catalog;kind=navigation; charset=utf-8");
+  assert.equal(response.headers.get("content-length"), String(Buffer.byteLength(xml)));
   assert.match(xml, /href="https:\/\/opds.example.com\/opds\/inbox"/);
   assert.match(xml, /href="https:\/\/opds.example.com\/opds\/shortlist"/);
   assert.match(xml, /href="https:\/\/opds.example.com\/opds\/later"/);
@@ -108,6 +109,7 @@ test("shelf feed lists readable documents from that location with a next-page li
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("content-type"), "application/atom+xml;profile=opds-catalog;kind=acquisition; charset=utf-8");
+  assert.equal(response.headers.get("content-length"), String(Buffer.byteLength(xml)));
   assert.match(xml, /<title>Readwise Later<\/title>/);
   assert.match(xml, /<updated>2026-10-24T01:02:03.000Z<\/updated>/);
   assert.match(xml, /href="https:\/\/opds.example.com\/opds\/books\/doc1.epub"/);
@@ -173,7 +175,7 @@ test("book builds an EPUB with grayscale baseline JPEGs and drops images that fa
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("content-type"), "application/epub+zip");
-  assert.match(response.headers.get("content-disposition"), /^attachment; filename="Claude s new auto eval tool.epub"; filename\*=UTF-8''Claude%E2%80%99s%20new%20auto%20eval%20tool.epub$/);
+  assert.equal(response.headers.get("content-disposition"), 'attachment; filename="doc1.epub"');
 
   const bytes = new Uint8Array(await response.arrayBuffer());
   assert.equal(Number(response.headers.get("content-length")), bytes.length);

@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { unzipSync } from "fflate";
 import sharp from "sharp";
 
+import { checkCrossInkHttpContract, deviceFilenameFor } from "./crossink-http-probe.js";
 import { FIXTURE_PASSWORD, FIXTURE_USERNAME, startFixtureCatalog } from "./fixture-catalog.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -138,6 +139,18 @@ const CROSSPOINT_OPDS = ["opds-check-1.6.5", "opds-check"];
 async function checkFeed(url, name) {
   const feed = await fetchTimed(url, { authorization });
   check(feed.response.status === 200, `${name} responds 200 (${feed.response.status}, ${feed.ms} ms)`);
+  const contract = checkCrossInkHttpContract({
+    url,
+    status: feed.response.status,
+    headers: feed.response.headers,
+    bytes: feed.bytes,
+    kind: "feed"
+  });
+  check(
+    contract.ok,
+    `${name} CrossInk HTTP contract (${feed.ms} ms)${contract.ok ? `: ${contract.notes.join(", ")}` : `: ${contract.failures.join("; ")}`}`
+  );
+  check(feed.ms <= 60_000, `${name} finished within CrossInk HTTP_TIMEOUT_MS=60000 (${feed.ms} ms)`);
   const path = join(work, `${name.replace(/\W+/g, "-")}.xml`);
   writeFileSync(path, feed.bytes);
 
@@ -214,6 +227,23 @@ try {
     check(
       book.response.status === 200,
       `${label} downloads (${book.response.status}, ${(book.bytes.length / 1024).toFixed(0)} KB, ${book.ms} ms)`
+    );
+    const contract = checkCrossInkHttpContract({
+      url: href,
+      status: book.response.status,
+      headers: book.response.headers,
+      bytes: book.bytes,
+      kind: "book"
+    });
+    check(
+      contract.ok,
+      `${label} CrossInk HTTP contract${contract.ok ? `: ${contract.notes.join(", ")}` : `: ${contract.failures.join("; ")}`}`
+    );
+    check(book.ms <= 60_000, `${label} finished within CrossInk HTTP_TIMEOUT_MS=60000 (${book.ms} ms)`);
+    const deviceName = deviceFilenameFor({ title, author: "" });
+    check(
+      deviceName.endsWith(".epub") && deviceName.length <= 155,
+      `${label} device filename ${JSON.stringify(deviceName)} is within FAT32/150-byte cap`
     );
     if (book.response.status !== 200) continue;
 

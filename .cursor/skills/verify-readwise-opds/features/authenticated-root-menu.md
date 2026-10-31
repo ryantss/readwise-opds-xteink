@@ -21,7 +21,7 @@ Preconditions:
 - `./scripts/opds-cli doctor` exits 0.
 - Origin is the launched fixture (default `http://127.0.0.1:8788`).
 
-- **Open catalog.** Fetch the root. Run `./scripts/opds-cli fetch /opds --out .cache/verify-opds/evidence/root-menu/root.xml`. Exit code `0`, status `200`, `Content-Type` contains `profile=opds-catalog;kind=navigation`.
+- **Open catalog.** Fetch the root. Run `./scripts/opds-cli fetch /opds --out .cache/verify-opds/evidence/root-menu/root.xml`. Exit code `0`, status `200`, `Content-Type` contains `profile=opds-catalog;kind=navigation`, and `Content-Length` matches the body.
 - **Read shelves.** The Atom body has `<title>Readwise</title>` and exactly four entries titled `Inbox`, `Shortlist`, `Later` and `Archive`, with `rel="subsection"` hrefs `/opds/inbox`, `/opds/shortlist`, `/opds/later` and `/opds/archive`.
 - **CrossInk view.** Run `./scripts/opds-cli walk --shelf inbox --feature authenticated-root-menu` or parse the saved XML with `opds-check-crossink`. CrossInk prints `NAV Inbox`, `NAV Shortlist`, `NAV Later`, `NAV Archive` and `truncated: no`.
 - **Proof.** `root.xml` plus `root.opds.txt` (or the walk evidence directory) show the four shelf titles in order. Status `200` without those titles is not proof.
