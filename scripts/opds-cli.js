@@ -33,8 +33,8 @@ const DEFAULT_PORT = 8788;
 const EVIDENCE_ROOT = join(repoRoot, ".cache/verify-opds/evidence");
 const SHELVES = ["inbox", "shortlist", "later", "archive"];
 const SHELF_TITLES = ["Inbox", "Shortlist", "Later", "Archive"];
-const FIXTURE_PAGE1_BOOKS = 50;
-const FIXTURE_PAGE2_BOOKS = 1;
+const FIXTURE_PAGE1_BOOKS = 10;
+const FIXTURE_PAGE2_BOOKS = 10;
 const X3 = { width: 528, height: 792 };
 
 const usage = `Usage: opds-cli [global flags] <command> [command flags]
@@ -815,18 +815,39 @@ async function cmdWalk(flags) {
     page1.fields.truncated === "no",
     `truncated=${page1.fields.truncated || "(missing)"} (CrossInk MAX_OPDS_FEED_ENTRIES=50)`
   );
-  check(`${flags.shelf} next page`, Boolean(page1.fields.nextPage), page1.fields.nextPage || "missing rel=next");
+  check(`${flags.shelf} page 1 next only`, Boolean(page1.fields.nextPage) && !page1.fields.prevPage, `next=${page1.fields.nextPage || "missing"} prev=${page1.fields.prevPage || "none"}`);
 
+  let page2 = null;
   if (page1.fields.nextPage) {
-    const page2 = await parseFeed(page1.fields.nextPage, `${flags.shelf}-page2`);
+    page2 = await parseFeed(page1.fields.nextPage, `${flags.shelf}-page2`);
     check(
       `${flags.shelf} page 2 count`,
       page2.fields.books.length === FIXTURE_PAGE2_BOOKS,
       `${page2.fields.books.length} BOOK entries`
     );
+    check(
+      `${flags.shelf} page 2 next and previous`,
+      Boolean(page2.fields.nextPage) && Boolean(page2.fields.prevPage),
+      `next=${page2.fields.nextPage || "missing"} prev=${page2.fields.prevPage || "missing"}`
+    );
+    const page1Ids = page1.fields.books.map((book) => book.href);
+    const page2Ids = page2.fields.books.map((book) => book.href);
+    check(
+      `${flags.shelf} page 2 entries are distinct from page 1`,
+      page2Ids.every((href) => !page1Ids.includes(href)),
+      `${page2Ids.length} page 2 hrefs`
+    );
+    if (page2.fields.prevPage) {
+      const back = await parseFeed(page2.fields.prevPage, `${flags.shelf}-prev-from-2`);
+      check(
+        `${flags.shelf} previous from page 2 matches page 1`,
+        page1Ids.join("\n") === back.fields.books.map((book) => book.href).join("\n"),
+        `${back.fields.books.length} entries`
+      );
+    }
   }
 
-  const books = page1.fields.books.slice(0, flags.books);
+  const books = (page2?.fields.books ?? page1.fields.books).slice(0, flags.books);
   check(`${flags.shelf} has books to download`, books.length > 0, `${books.length} selected`);
   for (const book of books) {
     const response = await httpGet(book.href, headers);

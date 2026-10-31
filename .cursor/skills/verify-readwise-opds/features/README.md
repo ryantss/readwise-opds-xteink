@@ -50,6 +50,6 @@ Keep implementation details out of the map. Name only user paths, stable handles
 ## Features
 
 - [Authenticated root menu](./authenticated-root-menu.md) covers opening the catalog with Basic auth and listing Inbox, Shortlist, Later and Archive.
-- [Shelf feeds and paging](./shelf-feeds-and-paging.md) covers a shelf of 50 articles, the next-page link, and CrossInk's 50-entry cap.
+- [Shelf feeds and paging](./shelf-feeds-and-paging.md) covers a shelf of 10 articles, next/previous links, and CrossInk's 50-entry cap.
 - [EPUB acquisition](./epub-acquisition.md) covers downloading an article as an EPUB with X3-sized baseline JPEGs.
 - [Auth rejection](./auth-rejection.md) covers requests without credentials and with the wrong password.

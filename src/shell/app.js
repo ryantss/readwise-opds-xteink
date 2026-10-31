@@ -3,10 +3,9 @@ import { isAuthorized } from "../core/auth.js";
 import { buildEpub } from "../core/epub.js";
 import { buildFeed, buildNavigationFeed, findShelf, isReadable, readwiseLocation } from "../core/feed.js";
 import { contentDisposition, epubFilename } from "../core/filename.js";
+import { encodePageToken, decodePageToken, FEED_PAGE_SIZE, listShelfPage } from "../core/paging.js";
 import { fetchEpubImages } from "./images.js";
 import { createReadwiseClient, ReadwiseError } from "./readwise.js";
-
-const FEED_PAGE_SIZE = 50; // CrossPoint holds at most ~62 entries per page
 const MAX_IMAGES = 40;
 const ACQUISITION_CONTENT_TYPE = "application/atom+xml;profile=opds-catalog;kind=acquisition; charset=utf-8";
 const NAVIGATION_CONTENT_TYPE = "application/atom+xml;profile=opds-catalog;kind=navigation; charset=utf-8";
@@ -19,32 +18,54 @@ export function createApp({ env, fetch = globalThis.fetch, lookup, now = () => n
     return (env.BASE_URL || new URL(request.url).origin).replace(/\/+$/, "");
   }
 
-  async function guarded(request, handler) {
+  async function guarded(request, route, handler) {
+    const started = Date.now();
+    const line = {
+      event: "request",
+      method: request.method,
+      path: clientPath(request, route),
+      userAgent: request.headers.get("user-agent") ?? "",
+      authorization: Boolean(request.headers.get("authorization"))
+    };
+
+    const finish = (response, error) => {
+      const length = response.headers.get("content-length");
+      const entry = {
+        ...line,
+        status: response.status,
+        bytes: length !== null ? Number(length) : 0,
+        ms: Date.now() - started
+      };
+      if (error) entry.error = error.message;
+      log(entry);
+      return response;
+    };
+
     if (!isAuthorized(request.headers.get("authorization"), credentials)) {
-      return new Response("Unauthorized\n", {
-        status: 401,
-        headers: { "WWW-Authenticate": 'Basic realm="Readwise OPDS", charset="UTF-8"' }
-      });
+      return finish(
+        bytesResponse("Unauthorized\n", { "WWW-Authenticate": 'Basic realm="Readwise OPDS", charset="UTF-8"' }, 401)
+      );
     }
     try {
-      return await handler();
+      return finish(await handler());
     } catch (error) {
-      if (!(error instanceof ReadwiseError)) throw error;
-      log({ event: "readwise_error", status: error.status });
-      if (error.status === 429) {
-        return new Response("Readwise rate limit, try again shortly\n", {
-          status: 503,
-          headers: { "Retry-After": error.retryAfter ?? "60" }
-        });
+      if (error instanceof ReadwiseError) {
+        if (error.status === 429) {
+          return finish(
+            bytesResponse("Readwise rate limit, try again shortly\n", { "Retry-After": error.retryAfter ?? "60" }, 503),
+            error
+          );
+        }
+        return finish(bytesResponse(`Readwise error ${error.status}\n`, {}, 502), error);
       }
-      return new Response(`Readwise error ${error.status}\n`, { status: 502 });
+      return finish(bytesResponse("Internal error\n", {}, 500), error);
     }
   }
 
   return {
     // No location: the root menu of shelves. With one: that shelf's documents.
     feed(request) {
-      return guarded(request, async () => {
+      return guarded(request, "feed", async () => {
         const params = new URL(request.url).searchParams;
         const location = params.get("location");
         const updated = now().toISOString();
@@ -56,28 +77,36 @@ export function createApp({ env, fetch = globalThis.fetch, lookup, now = () => n
         }
 
         const shelf = findShelf(location);
-        if (!shelf) return new Response("Not found\n", { status: 404 });
+        if (!shelf) return bytesResponse("Not found\n", {}, 404);
 
-        const cursor = params.get("cursor");
-        const { docs, nextCursor } = await readwise.listLocation({
+        const requested = decodePageToken(params.get("cursor"));
+        const { docs, nextCursor, previousReadwiseCursor } = await listShelfPage(readwise.listLocation, {
           location: readwiseLocation(shelf),
-          cursor,
-          limit: FEED_PAGE_SIZE
+          page: requested.page,
+          readwiseCursor: requested.readwiseCursor
         });
-        const xml = buildFeed({ shelf, docs: docs.filter(isReadable), baseUrl: baseUrl(request), nextCursor, updated });
-        log({ event: "feed", location, cursor, docs: docs.length });
+        // Filter after the Readwise fetch: a page can have fewer than 10
+        // readable docs. Topping up would consume the next cursor and needs a
+        // skip offset in the token to avoid skips/duplicates. Not trivial.
+        const xml = buildFeed({
+          shelf,
+          docs: docs.filter(isReadable),
+          baseUrl: baseUrl(request),
+          pageToken: encodePageToken(requested.page, requested.readwiseCursor),
+          nextToken: nextCursor ? encodePageToken(requested.page + 1, nextCursor) : null,
+          previousToken: requested.page > 1 ? encodePageToken(requested.page - 1, previousReadwiseCursor) : undefined,
+          updated
+        });
         return bytesResponse(xml, { "Content-Type": ACQUISITION_CONTENT_TYPE, ...noStore });
       });
     },
 
     book(request, id) {
-      return guarded(request, async () => {
-        const started = Date.now();
+      return guarded(request, "book", async () => {
         const doc = id ? await readwise.getDocument(id) : null;
-        if (!doc || !isReadable(doc) || !doc.html_content) return new Response("Not found\n", { status: 404 });
+        if (!doc || !isReadable(doc) || !doc.html_content) return bytesResponse("Not found\n", {}, 404);
 
         const epub = await buildBook(doc, { fetch, lookup, log });
-        log({ event: "book", id, bytes: epub.length, ms: Date.now() - started });
         return new Response(epub, {
           headers: {
             "Content-Type": "application/epub+zip",
@@ -130,13 +159,31 @@ function isoSeconds(value) {
   return (Number.isNaN(date.getTime()) ? new Date(0) : date).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+// Public catalog path, not the Vercel rewrite (/api/opds?location=inbox).
+function clientPath(request, route) {
+  const url = new URL(request.url);
+  if (route === "book") {
+    const file = url.searchParams.get("file") || url.pathname.split("/").pop() || "unknown.epub";
+    return `/opds/books/${file.endsWith(".epub") ? file : `${file}.epub`}`;
+  }
+  const location = url.searchParams.get("location");
+  if (location) {
+    const cursor = url.searchParams.get("cursor");
+    return cursor ? `/opds/${location}?cursor=${cursor}` : `/opds/${location}`;
+  }
+  const shelf = /^\/opds\/([^/]+)$/.exec(url.pathname);
+  if (shelf) return `${url.pathname}${url.search}`;
+  return "/opds";
+}
+
 // Known-length body so Vercel/Node cannot switch the feed to chunked TE.
 // CrossInk's wolfSSL client can decode chunked, but HttpDownloader then has
 // no Content-Length (progress stays at 0) and any mid-stream drop becomes
 // STR_FETCH_FEED_FAILED via responseComplete() == false.
-function bytesResponse(body, headers) {
+function bytesResponse(body, headers, status = 200) {
   const bytes = typeof body === "string" ? Buffer.from(body) : body;
   return new Response(bytes, {
+    status,
     headers: { ...headers, "Content-Length": String(bytes.byteLength ?? bytes.length) }
   });
 }

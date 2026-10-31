@@ -25,6 +25,24 @@ export const CROSSINK = {
   MAX_OPDS_FEED_ENTRIES: 50
 };
 
+// Exact first-try download from OpdsBookBrowserActivity::downloadBook +
+// HttpDownloader::runGetWolfSsl (pin above). GET only; no Accept; no HEAD;
+// Range only if resumePartial (OPDS leaves that false).
+export const DEVICE_DOWNLOAD = {
+  method: "GET",
+  userAgent: `CrossInk-ESP32-${CROSSINK.tag.replace(/^v/, "")}`,
+  connection: "keep-alive"
+};
+
+export function deviceHeaders({ authorization } = {}) {
+  const headers = {
+    "User-Agent": DEVICE_DOWNLOAD.userAgent,
+    Connection: DEVICE_DOWNLOAD.connection
+  };
+  if (authorization) headers.Authorization = authorization;
+  return headers;
+}
+
 export function checkCrossInkHttpContract({ url, status, headers, bytes, kind, headerLineMax = 0 }) {
   const failures = [];
   const notes = [];
@@ -95,8 +113,7 @@ export async function rawGet(url, { headers = {}, timeoutMs = CROSSINK.HTTP_TIME
   try {
     const requestHeaders = {
       Host: target.host,
-      Connection: "close",
-      "User-Agent": "CrossInk-ESP32-C3/1.6.1",
+      ...deviceHeaders(),
       ...headers
     };
     let request = `GET ${target.pathname}${target.search} HTTP/1.1\r\n`;
@@ -368,7 +385,7 @@ export async function runLegacyServer() {
   };
 }
 
-export async function runFixedServer() {
+export async function runFixedServer({ log = () => {} } = {}) {
   const env = { READWISE_TOKEN: "rw", OPDS_USERNAME: "u", OPDS_PASSWORD: "p" };
   const html = "<p>Body</p>";
   const article = {
@@ -398,10 +415,20 @@ export async function runFixedServer() {
       return new Response("not found", { status: 404 });
     },
     now: () => new Date("2026-10-31T00:00:00Z"),
-    log() {}
+    log
   });
+  const seen = [];
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
+    seen.push({
+      method: req.method,
+      path: url.pathname + url.search,
+      userAgent: req.headers["user-agent"] ?? "",
+      authorization: Boolean(req.headers.authorization),
+      accept: req.headers.accept ?? "",
+      range: req.headers.range ?? "",
+      connection: req.headers.connection ?? ""
+    });
     const request = new Request(url, { headers: req.headers });
     const bookMatch = /^\/opds\/books\/([^/]+)$/.exec(url.pathname);
     let response;
@@ -421,6 +448,7 @@ export async function runFixedServer() {
   return {
     baseUrl: `http://127.0.0.1:${port}`,
     auth: authorization("u", "p"),
+    seen,
     close: () => new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
   };
 }
@@ -431,11 +459,25 @@ function printResult(label, result) {
   console.log(`${tag} ${label}: ${result.status} ${result.bytes.length}B te=${result.transferEncoding || "identity"} ${result.ms}ms — ${extra}`);
 }
 
+function printSeen(label, seen) {
+  const extra = [
+    `ua=${seen.userAgent || "(none)"}`,
+    `authorization=${seen.authorization}`,
+    `connection=${seen.connection || "(none)"}`,
+    `accept=${seen.accept || "(none)"}`,
+    `range=${seen.range || "(none)"}`
+  ].join(" ");
+  console.log(`seen ${label}: ${seen.method} ${seen.path} ${extra}`);
+}
+
 export async function runSelfTest() {
   const failures = [];
   console.log(`CrossInk pin: ${CROSSINK.tag} (${CROSSINK.sha})`);
   console.log(`limits: HTTP_TIMEOUT_MS=${CROSSINK.HTTP_TIMEOUT_MS} MAX_LINE=${CROSSINK.MAX_LINE} filename=${CROSSINK.MAX_FILENAME_BYTES}`);
   console.log(`device filename for hostile title: ${deviceFilenameFor({ title: HOSTILE_TITLE, author: "Hamel Husain" })}`);
+  console.log(
+    `device download: ${DEVICE_DOWNLOAD.method} User-Agent=${DEVICE_DOWNLOAD.userAgent} Connection=${DEVICE_DOWNLOAD.connection} (no Accept, no Range, no HEAD)`
+  );
 
   console.log("\n=== BEFORE (production-like: chunked feed, title in Content-Disposition) ===");
   const legacy = await runLegacyServer();
@@ -452,9 +494,10 @@ export async function runSelfTest() {
   }
 
   console.log("\n=== AFTER (fixed app: Content-Length on feeds, ASCII id filename) ===");
-  const fixed = await runFixedServer();
+  const logs = [];
+  const fixed = await runFixedServer({ log: (entry) => logs.push(entry) });
   try {
-    const headers = { Authorization: fixed.auth };
+    const headers = deviceHeaders({ authorization: fixed.auth });
     const feed = await probeUrl(`${fixed.baseUrl}/opds`, { headers, kind: "feed" });
     printResult("fixed /opds", feed);
     if (!feed.contract.ok) failures.push(`fixed feed failed: ${feed.contract.failures.join("; ")}`);
@@ -465,6 +508,54 @@ export async function runSelfTest() {
     console.log(`contentDisposition() => ${contentDisposition(epubFilename("doc1"))}`);
   } finally {
     await fixed.close();
+  }
+
+  console.log("\n=== DEVICE DOWNLOAD (CrossInk v1.6.1 wolfSSL GET, same Basic as feeds) ===");
+  const deviceLogs = [];
+  const deviceServer = await runFixedServer({ log: (entry) => deviceLogs.push(entry) });
+  try {
+    const noAuth = await rawGet(`${deviceServer.baseUrl}/opds/books/doc1.epub`, { headers: deviceHeaders() });
+    const noAuthTag = noAuth.status === 401 ? "FAIL-before" : "UNEXPECTED";
+    console.log(
+      `${noAuthTag} device GET without Authorization: ${noAuth.status} ${noAuth.bytes.length}B (firmware would show "Download failed")`
+    );
+    if (noAuth.status !== 401) failures.push(`unauthenticated device download expected 401, got ${noAuth.status}`);
+    const noAuthLog = deviceLogs.find((entry) => entry.status === 401);
+    if (!noAuthLog) failures.push("401 device download produced no request log");
+    else {
+      console.log(`log 401: ${JSON.stringify(noAuthLog)}`);
+      if (noAuthLog.authorization !== false) failures.push("401 log claimed Authorization was present");
+      if (/Basic |u:p|"p"/.test(JSON.stringify(noAuthLog))) failures.push("401 log leaked credentials");
+    }
+
+    const withAuth = await probeUrl(`${deviceServer.baseUrl}/opds/books/doc1.epub`, {
+      headers: deviceHeaders({ authorization: deviceServer.auth }),
+      kind: "book"
+    });
+    printResult("device GET with same Basic as feeds", withAuth);
+    if (!withAuth.contract.ok) failures.push(`device download failed: ${withAuth.contract.failures.join("; ")}`);
+    const bookSeen = deviceServer.seen.find((row) => row.path === "/opds/books/doc1.epub" && row.authorization);
+    if (!bookSeen) failures.push("authenticated device download was not observed");
+    else {
+      printSeen("device download", bookSeen);
+      if (bookSeen.method !== "GET") failures.push(`device download method ${bookSeen.method}`);
+      if (bookSeen.userAgent !== DEVICE_DOWNLOAD.userAgent) failures.push(`device download UA ${bookSeen.userAgent}`);
+      if (bookSeen.connection !== DEVICE_DOWNLOAD.connection) {
+        failures.push(`device download Connection ${bookSeen.connection}`);
+      }
+      if (bookSeen.accept) failures.push(`device download sent Accept: ${bookSeen.accept}`);
+      if (bookSeen.range) failures.push(`device download sent Range: ${bookSeen.range}`);
+    }
+    const bookLog = deviceLogs.find((entry) => entry.path === "/opds/books/doc1.epub" && entry.status === 200);
+    if (!bookLog) failures.push("200 device download produced no request log");
+    else {
+      console.log(`log 200: ${JSON.stringify(bookLog)}`);
+      if (bookLog.authorization !== true) failures.push("200 log missing authorization=true");
+      if (bookLog.userAgent !== DEVICE_DOWNLOAD.userAgent) failures.push(`200 log UA ${bookLog.userAgent}`);
+      if (/Basic |u:p/.test(JSON.stringify(bookLog))) failures.push("200 log leaked credentials");
+    }
+  } finally {
+    await deviceServer.close();
   }
 
   const ok = failures.length === 0;
@@ -483,7 +574,7 @@ if (isMain) {
   const kind = args.includes("--book") ? "book" : "feed";
   const user = process.env.OPDS_USERNAME;
   const password = process.env.OPDS_PASSWORD;
-  const headers = user && password ? { Authorization: authorization(user, password) } : {};
+  const headers = deviceHeaders(user && password ? { authorization: authorization(user, password) } : {});
   const result = await probeUrl(url, { headers, kind });
   printResult(url, result);
   process.exit(result.contract.ok ? 0 : 1);
