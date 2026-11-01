@@ -36,3 +36,14 @@ test("startFixtureCatalog can bind 8787-style ryan credentials for sim:x3", asyn
   const body = await ok.text();
   assert.match(body, /Inbox/);
 });
+
+test("startFixtureCatalog can delay EPUB bytes so the simulator download screen stays up", async () => {
+  const catalog = await startFixtureCatalog({ downloadDelayMs: 200 });
+  catalogs.push(catalog);
+  const started = Date.now();
+  const response = await fetch(`${catalog.baseUrl}/opds/books/inbox-001.epub`, {
+    headers: { authorization: `Basic ${Buffer.from(`${FIXTURE_USERNAME}:${FIXTURE_PASSWORD}`).toString("base64")}` }
+  });
+  assert.equal(response.status, 200);
+  assert.ok(Date.now() - started >= 200);
+});

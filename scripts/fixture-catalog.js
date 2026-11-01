@@ -24,7 +24,8 @@ const LONG_AUTHOR =
 export async function startFixtureCatalog({
   port = 0,
   username = FIXTURE_USERNAME,
-  password = FIXTURE_PASSWORD
+  password = FIXTURE_PASSWORD,
+  downloadDelayMs = 0
 } = {}) {
   const png = await sharp({
     create: { width: 200, height: 120, channels: 3, background: { r: 40, g: 80, b: 160 } }
@@ -70,6 +71,9 @@ export async function startFixtureCatalog({
     if (url.pathname === "/opds") {
       response = await app.feed(request);
     } else if (bookMatch) {
+      if (downloadDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, downloadDelayMs));
+      }
       url.searchParams.set("file", decodeURIComponent(bookMatch[1]));
       response = await app.book(new Request(url, { headers: req.headers }), decodeURIComponent(bookMatch[1]).replace(/\.epub$/, ""));
     } else if (shelfMatch) {

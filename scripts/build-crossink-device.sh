@@ -9,22 +9,11 @@ crossink_tag=v1.6.1
 crossink_sha=9914146eeae7b46b300f475a16c32426fc02ec1f
 wolfssl_tag=v5.7.2-stable
 
-checkout() {
-  local repo=$1 dir=$2 sha=$3
-  if [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" = "$sha" ]; then return; fi
-  mkdir -p "$dir"
-  git -C "$dir" init -q
-  git -C "$dir" remote add origin "$repo" 2>/dev/null || true
-  git -C "$dir" fetch -q --depth 1 origin "$sha"
-  git -C "$dir" checkout -q FETCH_HEAD
-}
+# shellcheck source=crossink-sim/checkout-crossink.sh
+. "$here/crossink-sim/checkout-crossink.sh"
 
-checkout https://github.com/uxjulia/CrossInk.git "$cache/CrossInk" "$crossink_sha"
+checkout_crossink https://github.com/uxjulia/CrossInk.git "$cache/CrossInk" "$crossink_sha"
 ck=$cache/CrossInk
-if [ "$(git -C "$ck" rev-parse HEAD)" != "$crossink_sha" ]; then
-  echo "error: CrossInk HEAD is $(git -C "$ck" rev-parse HEAD), expected $crossink_sha ($crossink_tag)" >&2
-  exit 1
-fi
 
 # freeink-sdk is a CrossInk sibling checkout used for SecureHttpClient / SecureClient.
 if [ ! -f "$cache/freeink-sdk/libs/network/SecureNet/include/SecureHttpClient.h" ]; then
