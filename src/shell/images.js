@@ -6,8 +6,6 @@ import sharp from "sharp";
 import { JPEG_QUALITY, X3_SCREEN } from "../core/budget.js";
 import { isPublicAddress } from "../core/net.js";
 
-// Anything larger than the X3 page is wasted bytes on the ESP32-C3.
-// CrossPoint decodes progressive JPEGs at 1/8 scale, so output must be baseline.
 const MIN_DIMENSION = 8; // smaller than this is a tracking pixel or spacer
 const MAX_INPUT_PIXELS = 40_000_000;
 const MAX_REDIRECTS = 3;
@@ -23,6 +21,7 @@ export async function toEpubJpeg(input) {
     .resize({ ...X3_SCREEN, fit: "inside", withoutEnlargement: true })
     .grayscale()
     .toColourspace("b-w")
+    // CrossPoint decodes progressive JPEGs at 1/8 scale, so output must be baseline.
     .jpeg({ quality: JPEG_QUALITY, progressive: false, mozjpeg: false })
     .toBuffer();
   return new Uint8Array(bytes);

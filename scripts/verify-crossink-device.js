@@ -77,7 +77,7 @@ console.log("=== device limit this harness can score ===");
 console.log(
   "CrossInk #836: wolfSSL MEMORY_E after 219615 bytes, max block 13300. Vercel ignores max_fragment_length (2KB), so TLS records stay up to 16KB."
 );
-console.log(`EPUB budget ${EPUB_BYTE_BUDGET} bytes. A body past the published prefix is a failed read.`);
+console.log(`EPUB budget ${EPUB_BYTE_BUDGET} bytes. A body past the published #836 prefix is scored as a failed read.`);
 for (const known of [
   ["01m6ayz163q7d673wrkq76hcn1.epub", 502491],
   ["01m5ad7pndwt54mkgwpg845shq.epub", 293924],
@@ -88,11 +88,24 @@ for (const known of [
     `  ${known[0]} ${known[1]} bytes -> ${outcome.ok ? "complete" : `MEMORY_E at ${outcome.received}/${outcome.total}`}`
   );
 }
+const videoBytes = 502491;
+const lastTick = Math.floor(videoBytes / (64 * 1024)) * (64 * 1024);
+console.log("");
+console.log("=== 1 Nov video, primary article ===");
+console.log("The Rise of the Self-Driving Company, Amjad Masad, id 01m6ayz163q7d673wrkq76hcn1");
+console.log(`production GET twice, 200, Content-Length ${videoBytes}. The bytes were not saved here.`);
+console.log(
+  `last 64KB progress tick is ${lastTick} bytes (${((100 * lastTick) / videoBytes).toFixed(1)}%). The forced 100% notify runs only after responseComplete(), before sync, the size check, ZipFile validate, and .part publish.`
+);
+console.log(
+  "The scored stop at 212992/502491 is the earlier #836 prefix. It is not the bar on this screen. wolfSSL retains the 16KB record buffer, and a read that reached this tick had already allocated it."
+);
 console.log("");
 console.log("=== still cannot model ===");
 console.log("- the exact byte where Ryan's X3 stopped (no serial log; the screen has no counts)");
 console.log("- WiFi stalls (DOWNLOAD_IDLE_TIMEOUT_MS=30000). The video failed in a fraction of a second, so this was not a timeout");
 console.log("- SdFat SPI write chunks versus this host FatFs image");
+console.log("- whether the 100% frame was requested and then replaced before the panel showed it");
 console.log("");
 
 console.log("=== build ===");
