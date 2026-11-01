@@ -197,8 +197,7 @@ function bytesResponse(body, headers, status = 200) {
     status,
     headers: {
       ...headers,
-      "Content-Length": String(bytes.byteLength ?? bytes.length),
-      Connection: "close"
+      "Content-Length": String(bytes.byteLength ?? bytes.length)
     }
   });
 }

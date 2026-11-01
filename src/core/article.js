@@ -31,8 +31,8 @@ export function collectImageUrls(html, baseUrl, { max }) {
   return urls;
 }
 
-// `images` maps an absolute source URL to its href inside the EPUB; images
-// without an entry (failed or skipped downloads) are dropped.
+// `images` maps an absolute source URL to its href inside the EPUB. A picture
+// with no entry was skipped. Its alt text stays in the chapter as an italic line.
 export function articleToXhtmlBody(html, { baseUrl, images }) {
   return serializeNodes(parseDocument(html).children, { baseUrl, images });
 }
@@ -77,9 +77,9 @@ function serializeNode(node, context) {
 
   if (node.name === "img") {
     const href = context.images.get(resolveUrl(node.attribs.src, context.baseUrl, ["http:", "https:"]));
-    if (!href) return "";
-    const alt = node.attribs.alt ? ` alt="${escapeXml(node.attribs.alt)}"` : "";
-    return `<img src="${escapeXml(href)}"${alt}/>`;
+    const alt = node.attribs.alt ? escapeXml(node.attribs.alt) : "";
+    if (!href) return alt ? `<i>${alt}</i>` : "";
+    return `<img src="${escapeXml(href)}"${alt ? ` alt="${alt}"` : ""}/>`;
   }
 
   const name = AS_DIV.has(node.name) ? "div" : node.name;

@@ -400,12 +400,11 @@ test("401, feeds, books, and errors each emit one request log without credential
   });
 });
 
-// CrossInk 1.6.1 issue 836: wolfSSL MEMORY_E after 219615 bytes when the
-// largest free block is 13300. A finished EPUB has to land under that prefix.
-const X3_COMPLETE_READ_BYTES = 219_615;
+// The 160 KiB cap only shortens the TLS read. It is a size workaround, not a
+// proven fix for the tail cut (458752 of 502491). Skipped pictures keep alt text.
 const EPUB_BYTE_BUDGET = 160 * 1024;
 
-test("a long article stays under the X3 complete-read prefix and keeps its text", async () => {
+test("a long article stays inside the picture budget and keeps its text and alts", async () => {
   const sentence = "The rise of the self-driving company keeps this full sentence.";
   const pictures = 24;
   const noisy = await sharp(pattern(900, 600), { raw: { width: 900, height: 600, channels: 3 } })
@@ -438,10 +437,16 @@ test("a long article stays under the X3 complete-read prefix and keeps its text"
   assert.equal(Number(response.headers.get("content-length")), bytes.length);
   assert.ok(bytes.length <= EPUB_BYTE_BUDGET, `epub ${bytes.length} exceeds ${EPUB_BYTE_BUDGET}`);
   assert.equal(response.headers.get("content-encoding"), null);
-  assert.equal(response.headers.get("connection"), "close");
-  assert.ok(bytes.length <= X3_COMPLETE_READ_BYTES);
+  assert.equal(response.headers.get("connection"), null);
   assert.match(chapter, /The rise of the self-driving company keeps this full sentence\./);
   assert.ok(imageCount >= 1 && imageCount < pictures + 1, `kept ${imageCount} jpegs`);
+  for (let index = 0; index < pictures; index++) {
+    const alt = `fig${index}`;
+    assert.ok(
+      chapter.includes(`alt="${alt}"`) || chapter.includes(`<i>${alt}</i>`),
+      `${alt} alt missing`
+    );
+  }
 });
 
 function pattern(width, height) {

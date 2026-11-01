@@ -46,6 +46,12 @@ test("articleToXhtmlBody unwraps unknown elements and keeps their text", () => {
   assert.equal(body, `<div>Inside <span>span</span></div>`);
 });
 
+test("articleToXhtmlBody keeps alt text when a picture is skipped", () => {
+  const html = `<p><img alt="A &quot;red&quot; box" src="images/missing.png"></p>`;
+  const body = articleToXhtmlBody(html, { baseUrl, images: new Map() });
+  assert.equal(body, `<p><i>A &quot;red&quot; box</i></p>`);
+});
+
 test("articleToXhtmlBody points fetched images at local files and drops the rest", () => {
   const html = `<figure><img alt="A &quot;red&quot; box" src="images/a.png"/><figcaption>Cap</figcaption></figure><p><img src="images/missing.png"></p>`;
   const images = new Map([["https://hamel.dev/blog/posts/claude-auto-evals/images/a.png", "images/img-001.jpg"]]);

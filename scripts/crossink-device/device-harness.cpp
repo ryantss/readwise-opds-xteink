@@ -12,6 +12,7 @@
 #include <OpdsParser.h>
 #include <OpdsStream.h>
 #include <SecureClient.h>
+#include <SecureHttpClient.h>
 #include <ZipFile.h>
 #include <cstdio>
 #include <cstdlib>
@@ -184,16 +185,80 @@ void printFilename(const std::string& title, const std::string& author, const Op
             << " bytes=" << dest.size() - 1 << "\n";
 }
 
+// One short GET so the printed Connection value is the response header.
+// readFixed finishes on Content-Length; this header only decides reuse.
+std::string responseConnection(const std::string& url, const std::string& user, const std::string& password) {
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+  http.setTimeout(60000);
+  http.setReuse(false);
+  http.setUserAgent(AppVersion::userAgent());
+  if (!user.empty()) http.setBasicAuth(user, password);
+  if (!http.begin(url)) return "(none)";
+  http.GET([](const uint8_t*, size_t) { return false; });
+  const std::string value = http.getHeader("connection");
+  http.end();
+  return value.empty() ? "(none)" : value;
+}
+
+int finishDownload(const std::string& downloadUrl, const std::string& dest, const std::string& user,
+                   const std::string& password, const std::string& origin, const bool validate) {
+  const std::string connection = responseConnection(downloadUrl, user, password);
+  std::cout << "response Connection=" << connection << "\n";
+  HttpDownloader::DownloadOptions options = wolfOptions(origin, true);
+  if (!validate) options.validate = nullptr;
+  const auto result =
+      HttpDownloader::downloadToFile(downloadUrl, dest, nullptr, nullptr, user, password, options);
+  if (result != HttpDownloader::OK) {
+    fail("download", uiErrorForDownload(result),
+         std::string("HttpDownloader::downloadToFile=") + downloadErrorName(result) +
+             " (OpdsBookBrowserActivity.cpp:782-784)");
+    return 1;
+  }
+  pass("download", dest + " via wolfSSL GET Connection=" + connection);
+
+  if (!Storage.exists(dest.c_str())) {
+    fail("publish", STR_DOWNLOAD_FAILED, "DownloadFileSwap::publish left no dest file");
+    return 1;
+  }
+  HalFile published;
+  if (!Storage.openFileForRead("HARNESS", dest, published)) {
+    fail("publish", STR_DOWNLOAD_FAILED, "published dest could not be opened");
+    return 1;
+  }
+  const size_t publishedSize = published.size();
+  published.close();
+  pass("publish", dest + " size=" + std::to_string(publishedSize));
+
+  if (!validate) {
+    std::cout << "ALL PASS " << dest << " " << publishedSize << " bytes\n";
+    return 0;
+  }
+  if (!validateContainer(dest)) {
+    fail("validate", STR_DOWNLOAD_FAILED, "container.xml missing after publish");
+    return 1;
+  }
+  ZipFile zip(dest);
+  size_t containerSize = 0;
+  zip.getInflatedFileSize("META-INF/container.xml", &containerSize);
+  pass("validate", "META-INF/container.xml uncompressed=" + std::to_string(containerSize));
+  std::cout << "ALL PASS " << dest << " " << publishedSize << " bytes\n";
+  return 0;
+}
+
 void usage() {
   std::cerr << "usage:\n"
             << "  crossink-device-harness --url URL --user USER --password PASS [--shelf inbox]\n"
             << "      [--folder FOLDER] [--image FILE] [--book-index N]\n"
+            << "  crossink-device-harness --download-url URL [--user USER --password PASS]\n"
+            << "      [--image FILE] [--title T] [--no-validate]\n"
             << "  crossink-device-harness --sanitize --title T [--author A]\n"
             << "  crossink-device-harness --validate-zip FILE [--title T --author A]\n";
 }
 }  // namespace
 
 int main(int argc, char** argv) {
+  std::cout << std::unitbuf;
   std::string url;
   std::string user;
   std::string password;
@@ -203,9 +268,11 @@ int main(int argc, char** argv) {
   std::string zipPath;
   std::string title;
   std::string author;
+  std::string directUrl;
   int bookIndex = 0;
   bool sanitizeOnly = false;
   bool validateZip = false;
+  bool noValidate = false;
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -238,6 +305,10 @@ int main(int argc, char** argv) {
     } else if (arg == "--book-index") {
       if (i + 1 >= argc) return 2;
       bookIndex = std::atoi(argv[++i]);
+    } else if (arg == "--download-url") {
+      if (!need(directUrl)) return 2;
+    } else if (arg == "--no-validate") {
+      noValidate = true;
     } else if (arg == "--help" || arg == "-h") {
       usage();
       return 0;
@@ -297,6 +368,18 @@ int main(int argc, char** argv) {
     pass("validate", dest + " container.xml uncompressed=" + std::to_string(size));
     fatImageClose();
     return 0;
+  }
+
+  if (!directUrl.empty()) {
+    OpdsEntry book;
+    book.title = title.empty() ? "observed" : title;
+    book.author = author;
+    const std::string dest = deviceDestPath(book, "", OpdsFilenameFormat::AUTHOR_TITLE);
+    std::cout << "download url=" << directUrl << "\n";
+    std::cout << "device path=" << dest << "\n";
+    const int code = finishDownload(directUrl, dest, user, password, directUrl, !noValidate);
+    fatImageClose();
+    return code;
   }
 
   if (url.empty()) {
@@ -373,43 +456,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  const auto result = HttpDownloader::downloadToFile(downloadUrl, dest, nullptr, nullptr, user, password,
-                                                     wolfOptions(origin, true));
-  if (result != HttpDownloader::OK) {
-    fail("download", uiErrorForDownload(result),
-         std::string("HttpDownloader::downloadToFile=") + downloadErrorName(result) +
-             " (OpdsBookBrowserActivity.cpp:782-784)");
-    fatImageClose();
-    return 1;
-  }
-  pass("download", dest + " via wolfSSL GET Connection=keep-alive");
-
-  if (!Storage.exists(dest.c_str())) {
-    fail("publish", STR_DOWNLOAD_FAILED, "DownloadFileSwap::publish left no dest file");
-    fatImageClose();
-    return 1;
-  }
-  HalFile published;
-  if (!Storage.openFileForRead("HARNESS", dest, published)) {
-    fail("publish", STR_DOWNLOAD_FAILED, "published dest could not be opened");
-    fatImageClose();
-    return 1;
-  }
-  const size_t publishedSize = published.size();
-  published.close();
-  pass("publish", dest + " size=" + std::to_string(publishedSize));
-
-  if (!validateContainer(dest)) {
-    fail("validate", STR_DOWNLOAD_FAILED, "container.xml missing after publish");
-    fatImageClose();
-    return 1;
-  }
-  ZipFile zip(dest);
-  size_t containerSize = 0;
-  zip.getInflatedFileSize("META-INF/container.xml", &containerSize);
-  pass("validate", "META-INF/container.xml uncompressed=" + std::to_string(containerSize));
-
-  std::cout << "ALL PASS " << dest << " " << publishedSize << " bytes\n";
+  const int code = finishDownload(downloadUrl, dest, user, password, origin, true);
   fatImageClose();
-  return 0;
+  return code;
 }
