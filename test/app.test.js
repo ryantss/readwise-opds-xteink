@@ -399,3 +399,58 @@ test("401, feeds, books, and errors each emit one request log without credential
     error: "socket hang up"
   });
 });
+
+// CrossInk 1.6.1 issue 836: wolfSSL MEMORY_E after 219615 bytes when the
+// largest free block is 13300. A finished EPUB has to land under that prefix.
+const X3_COMPLETE_READ_BYTES = 219_615;
+const EPUB_BYTE_BUDGET = 160 * 1024;
+
+test("a long article stays under the X3 complete-read prefix and keeps its text", async () => {
+  const sentence = "The rise of the self-driving company keeps this full sentence.";
+  const pictures = 24;
+  const noisy = await sharp(pattern(900, 600), { raw: { width: 900, height: 600, channels: 3 } })
+    .jpeg({ quality: 95 })
+    .toBuffer();
+  const imgs = Array.from({ length: pictures }, (_, index) => `<img alt="fig${index}" src="https://cdn.example/i${index}.jpg"/>`).join("");
+  const html = `<p>${sentence}</p>${imgs}`;
+  const doc = {
+    ...article,
+    id: "01m6ayz163q7d673wrkq76hcn1",
+    title: "The Rise of the Self-Driving Company",
+    author: "Amjad Masad",
+    html_content: html,
+    image_url: "https://cdn.example/cover.jpg"
+  };
+  const { fetch } = fakeFetch([
+    ["https://readwise.io/api/v3/list/", () => json({ results: [doc] })],
+    ["https://cdn.example/", () => new Response(noisy)]
+  ]);
+  const app = createApp({ env, fetch, lookup: publicLookup, ...silent });
+  const response = await app.book(
+    new Request("https://opds.example.com/opds/books/01m6ayz163q7d673wrkq76hcn1.epub", { headers: auth }),
+    doc.id
+  );
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const chapter = strFromU8(unzipSync(bytes)["OEBPS/chapter.xhtml"]);
+  const imageCount = Object.keys(unzipSync(bytes)).filter((name) => name.endsWith(".jpg")).length;
+
+  assert.equal(response.status, 200);
+  assert.equal(Number(response.headers.get("content-length")), bytes.length);
+  assert.ok(bytes.length <= EPUB_BYTE_BUDGET, `epub ${bytes.length} exceeds ${EPUB_BYTE_BUDGET}`);
+  assert.equal(response.headers.get("content-encoding"), null);
+  assert.equal(response.headers.get("connection"), "close");
+  assert.ok(bytes.length <= X3_COMPLETE_READ_BYTES);
+  assert.match(chapter, /The rise of the self-driving company keeps this full sentence\./);
+  assert.ok(imageCount >= 1 && imageCount < pictures + 1, `kept ${imageCount} jpegs`);
+});
+
+function pattern(width, height) {
+  const raw = Buffer.alloc(width * height * 3);
+  for (let i = 0; i < raw.length; i += 3) {
+    const n = i / 3;
+    raw[i] = (n * 17) & 255;
+    raw[i + 1] = (n * 29) & 255;
+    raw[i + 2] = (n * 13) & 255;
+  }
+  return raw;
+}
