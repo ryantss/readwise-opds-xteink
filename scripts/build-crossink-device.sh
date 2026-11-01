@@ -26,12 +26,55 @@ if [ "$(git -C "$ck" rev-parse HEAD)" != "$crossink_sha" ]; then
   exit 1
 fi
 
-# freeink-sdk is a CrossInk sibling checkout used for SecureHttpClient / SecureClient.
-if [ ! -f "$cache/freeink-sdk/libs/network/SecureNet/include/SecureHttpClient.h" ]; then
+# freeink-sdk is a CrossInk submodule (SecureHttpClient / SecureClient).
+# A clean checkout has an empty freeink-sdk directory until it is seeded.
+sdk_header="$cache/freeink-sdk/libs/network/SecureNet/include/SecureHttpClient.h"
+if [ ! -f "$sdk_header" ]; then
+  echo "freeink-sdk SecureHttpClient.h missing; seeding the CrossInk submodule"
+  if [ -d "$ck/freeink-sdk" ] && [ -z "$(ls -A "$ck/freeink-sdk" 2>/dev/null)" ]; then
+    rmdir "$ck/freeink-sdk"
+  fi
+  git -C "$ck" submodule update --init --depth 1 freeink-sdk >&2
+  ln -sfn "$ck/freeink-sdk" "$cache/freeink-sdk"
+fi
+if [ ! -f "$sdk_header" ]; then
   echo "error: freeink-sdk SecureNet is missing under $cache/freeink-sdk" >&2
+  echo "error: seed it with: git -C $ck submodule update --init --depth 1 freeink-sdk" >&2
   exit 1
 fi
 sdk=$cache/freeink-sdk
+echo "host tool ok: freeink-sdk $(git -C "$sdk" rev-parse --short=12 HEAD)"
+
+install_packages() {
+  local packages=$*
+  if sudo -n true >/dev/null 2>&1; then
+    sudo -n apt-get update -qq
+    sudo -n apt-get install -y $packages
+    return 0
+  fi
+  echo "error: missing host tools. Install with: sudo apt install $packages" >&2
+  exit 1
+}
+
+if ! command -v autoreconf >/dev/null 2>&1; then
+  echo "autoreconf missing; installing autoconf automake libtool"
+  install_packages autoconf automake libtool
+fi
+if ! command -v autoreconf >/dev/null 2>&1; then
+  echo "error: autoreconf is missing. Install with: sudo apt install autoconf automake libtool" >&2
+  exit 1
+fi
+echo "host tool ok: autoreconf"
+
+if ! echo '#include <expat.h>' | gcc -E - >/dev/null 2>&1 && ! echo '#include <expat.h>' | clang -E - >/dev/null 2>&1; then
+  echo "expat.h missing; installing libexpat1-dev"
+  install_packages libexpat1-dev
+fi
+if ! echo '#include <expat.h>' | gcc -E - >/dev/null 2>&1 && ! echo '#include <expat.h>' | clang -E - >/dev/null 2>&1; then
+  echo "error: expat.h is missing. Install with: sudo apt install libexpat1-dev" >&2
+  exit 1
+fi
+echo "host tool ok: libexpat1-dev"
 
 # FatFs (ChaN) — fetched once, then compiled with UTF-8 LFN + mkfs.
 if [ ! -f "$cache/fatfs/source/ff.c" ]; then
@@ -87,13 +130,13 @@ if [ ! -f "$cache/wolfssl/lib/libwolfssl.a" ]; then
     git clone --depth 1 --branch "$wolfssl_tag" https://github.com/wolfSSL/wolfssl.git "$cache/wolfssl-src"
   fi
   if [ ! -f "$cache/wolfssl-src/configure" ]; then
-    (cd "$cache/wolfssl-src" && ./autogen.sh)
+    (cd "$cache/wolfssl-src" && ./autogen.sh) >&2
   fi
   (cd "$cache/wolfssl-src" && ./configure --prefix="$cache/wolfssl" --disable-shared --enable-static \
       --enable-tls13 --enable-sni --enable-maxfragment --enable-curve25519 \
-      --disable-examples --disable-crypttests)
-  make -C "$cache/wolfssl-src" -j"$(nproc)"
-  make -C "$cache/wolfssl-src" install
+      --disable-examples --disable-crypttests) >&2
+  make -C "$cache/wolfssl-src" -j"$(nproc)" >&2
+  make -C "$cache/wolfssl-src" install >&2
 fi
 
 if clang++ -std=c++20 -xc++ - -o /dev/null >/dev/null 2>&1 <<'EOF'

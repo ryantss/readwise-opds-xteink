@@ -3,12 +3,9 @@ import { isIP } from "node:net";
 
 import sharp from "sharp";
 
+import { JPEG_QUALITY, X3_SCREEN } from "../core/budget.js";
 import { isPublicAddress } from "../core/net.js";
 
-// Xteink X3 panel in portrait. Anything larger is wasted bytes and RAM on the
-// ESP32-C3; CrossPoint decodes progressive JPEGs at 1/8 scale, so output must
-// be baseline.
-const SCREEN = { width: 528, height: 792 };
 const MIN_DIMENSION = 8; // smaller than this is a tracking pixel or spacer
 const MAX_INPUT_PIXELS = 40_000_000;
 const MAX_REDIRECTS = 3;
@@ -21,10 +18,11 @@ export async function toEpubJpeg(input) {
   const bytes = await image
     .rotate()
     .flatten({ background: "#ffffff" })
-    .resize({ ...SCREEN, fit: "inside", withoutEnlargement: true })
+    .resize({ ...X3_SCREEN, fit: "inside", withoutEnlargement: true })
     .grayscale()
     .toColourspace("b-w")
-    .jpeg({ quality: 80, progressive: false, mozjpeg: false })
+    // CrossPoint decodes progressive JPEGs at 1/8 scale, so output must be baseline.
+    .jpeg({ quality: JPEG_QUALITY, progressive: false, mozjpeg: false })
     .toBuffer();
   return new Uint8Array(bytes);
 }
