@@ -1,5 +1,6 @@
 import { articleToXhtmlBody, chapterDocument, collectImageUrls } from "../core/article.js";
 import { isAuthorized } from "../core/auth.js";
+import { selectAssets } from "../core/budget.js";
 import { buildEpub } from "../core/epub.js";
 import { buildFeed, buildNavigationFeed, findShelf, isReadable, readwiseLocation } from "../core/feed.js";
 import { contentDisposition, epubFilename } from "../core/filename.js";
@@ -107,13 +108,10 @@ export function createApp({ env, fetch = globalThis.fetch, lookup, now = () => n
         if (!doc || !isReadable(doc) || !doc.html_content) return bytesResponse("Not found\n", {}, 404);
 
         const epub = await buildBook(doc, { fetch, lookup, log });
-        return new Response(epub, {
-          headers: {
-            "Content-Type": "application/epub+zip",
-            "Content-Length": String(epub.length),
-            "Content-Disposition": contentDisposition(epubFilename(id)),
-            "Cache-Control": "private, no-store"
-          }
+        return bytesResponse(epub, {
+          "Content-Type": "application/epub+zip",
+          "Content-Disposition": contentDisposition(epubFilename(id)),
+          "Cache-Control": "private, no-store"
         });
       });
     }
@@ -126,30 +124,43 @@ async function buildBook(doc, { fetch, lookup, log }) {
   const coverUrl = doc.image_url && /^https?:/.test(doc.image_url) ? doc.image_url : null;
   const fetched = await fetchEpubImages(coverUrl ? [...imageUrls, coverUrl] : imageUrls, { fetch, lookup, log });
 
-  const images = imageUrls
+  const candidates = imageUrls
     .filter((url) => fetched.has(url))
     .map((url, index) => ({ url, href: `images/img-${String(index + 1).padStart(3, "0")}.jpg`, bytes: fetched.get(url) }));
-  const body = articleToXhtmlBody(doc.html_content, {
-    baseUrl: doc.source_url,
-    images: new Map(images.map((image) => [image.url, image.href]))
-  });
+  const cover = coverUrl && fetched.has(coverUrl) ? { href: "images/cover.jpg", bytes: fetched.get(coverUrl) } : null;
   const language = doc.language || "en";
-
-  return buildEpub({
+  const fields = {
     id: doc.id,
     title,
     author: doc.author || doc.site_name || "",
     language,
-    modified: isoSeconds(doc.updated_at || doc.saved_at),
+    modified: isoSeconds(doc.updated_at || doc.saved_at)
+  };
+
+  const packed = selectAssets({
+    cover,
+    images: candidates,
+    measure: ({ cover: nextCover, images }) => epubFor(doc, fields, nextCover, images).length
+  });
+  return epubFor(doc, fields, packed.cover, packed.images);
+}
+
+function epubFor(doc, fields, cover, images) {
+  const body = articleToXhtmlBody(doc.html_content, {
+    baseUrl: doc.source_url,
+    images: new Map(images.map((image) => [image.url, image.href]))
+  });
+  return buildEpub({
+    ...fields,
     chapter: chapterDocument({
-      title,
+      title: fields.title,
       byline: [doc.author, doc.site_name].filter(Boolean).join(" · "),
       sourceUrl: doc.source_url,
-      language,
+      language: fields.language,
       body
     }),
     images,
-    cover: coverUrl && fetched.has(coverUrl) ? { href: "images/cover.jpg", bytes: fetched.get(coverUrl) } : null
+    cover
   });
 }
 
@@ -184,7 +195,11 @@ function bytesResponse(body, headers, status = 200) {
   const bytes = typeof body === "string" ? Buffer.from(body) : body;
   return new Response(bytes, {
     status,
-    headers: { ...headers, "Content-Length": String(bytes.byteLength ?? bytes.length) }
+    headers: {
+      ...headers,
+      "Content-Length": String(bytes.byteLength ?? bytes.length),
+      Connection: "close"
+    }
   });
 }
 

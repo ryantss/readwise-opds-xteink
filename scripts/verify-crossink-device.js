@@ -3,11 +3,15 @@
 // Preferred target is https://rwopds.vercel.app/opds with username ryan and
 // OPDS_PASSWORD. When that env is unset, the fixture catalog is used instead.
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { strFromU8, unzipSync } from "fflate";
+
+import { EPUB_BYTE_BUDGET, x3DownloadOutcome } from "../src/core/budget.js";
 import { FIXTURE_PASSWORD, FIXTURE_USERNAME, startFixtureCatalog } from "./fixture-catalog.js";
+import { repackUnderBudget, visibleText } from "./repack-under-budget.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -69,10 +73,26 @@ function runLive(bin, args) {
   });
 }
 
-console.log("=== cannot model ===");
-console.log("- real ESP32 heap size and fragmentation (wolfSSL record buffers, ZipFile EOCD scan)");
-console.log("- WiFi association, RSSI, and stall/retry timing (DOWNLOAD_IDLE_TIMEOUT_MS=30000 still applies)");
-console.log("- real SD card behaviour (SdFat 2.3.1 on SPI vs host FatFs on a 64MB image file)");
+console.log("=== device limit this harness can score ===");
+console.log(
+  "CrossInk #836: wolfSSL MEMORY_E after 219615 bytes, max block 13300. Vercel ignores max_fragment_length (2KB), so TLS records stay up to 16KB."
+);
+console.log(`EPUB budget ${EPUB_BYTE_BUDGET} bytes. A body past the published prefix is a failed read.`);
+for (const known of [
+  ["01m6ayz163q7d673wrkq76hcn1.epub", 502491],
+  ["01m5ad7pndwt54mkgwpg845shq.epub", 293924],
+  ["01m62s8vznfmgdxc37yevr5efq.epub", 681709]
+]) {
+  const outcome = x3DownloadOutcome(known[1]);
+  console.log(
+    `  ${known[0]} ${known[1]} bytes -> ${outcome.ok ? "complete" : `MEMORY_E at ${outcome.received}/${outcome.total}`}`
+  );
+}
+console.log("");
+console.log("=== still cannot model ===");
+console.log("- the exact byte where Ryan's X3 stopped (no serial log; the screen has no counts)");
+console.log("- WiFi stalls (DOWNLOAD_IDLE_TIMEOUT_MS=30000). The video failed in a fraction of a second, so this was not a timeout");
+console.log("- SdFat SPI write chunks versus this host FatFs image");
 console.log("");
 
 console.log("=== build ===");
@@ -98,9 +118,35 @@ for (const epub of FAILING_EPUBS) {
     continue;
   }
   console.log(`\n=== validate attached EPUB on FAT: ${epub.file} ===`);
+  const before = readFileSync(epub.file);
+  const beforeRead = x3DownloadOutcome(before.length);
+  console.log(
+    `BEFORE ${before.length} bytes ${beforeRead.ok ? "complete" : `MEMORY_E at ${beforeRead.received}/${beforeRead.total}`}`
+  );
+  const started = Date.now();
+  const after = await repackUnderBudget(before, {
+    id: epub.file.split("/").pop().replace(/\.epub$/, ""),
+    title: epub.title,
+    author: epub.author
+  });
+  const afterRead = x3DownloadOutcome(after.length);
+  const beforeText = visibleText(strFromU8(unzipSync(before)["OEBPS/chapter.xhtml"]));
+  const afterText = visibleText(strFromU8(unzipSync(after)["OEBPS/chapter.xhtml"]));
+  console.log(`AFTER  ${after.length} bytes in ${Date.now() - started}ms ${afterRead.ok ? "complete" : "FAIL"} budget ${EPUB_BYTE_BUDGET}`);
+  if (!beforeRead.ok && afterRead.ok && after.length <= EPUB_BYTE_BUDGET && beforeText === afterText) {
+    console.log("PASS byte budget, text unchanged");
+  } else {
+    failures += 1;
+    console.log("FAIL byte budget or text changed");
+  }
+  const repacked = epub.file.replace(/\.epub$/, ".repacked.epub");
+  writeFileSync(repacked, after);
   try {
     process.stdout.write(
       run(harness, ["--validate-zip", epub.file, "--title", epub.title, "--author", epub.author])
+    );
+    process.stdout.write(
+      run(harness, ["--validate-zip", repacked, "--title", epub.title, "--author", epub.author])
     );
   } catch (error) {
     failures += 1;
