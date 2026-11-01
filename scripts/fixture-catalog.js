@@ -21,7 +21,12 @@ const LONG_TITLE =
 const LONG_AUTHOR =
   "A fixture author padded past CrossInk's 120-character cap xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 
-export async function startFixtureCatalog({ port = 0 } = {}) {
+export async function startFixtureCatalog({
+  port = 0,
+  username = FIXTURE_USERNAME,
+  password = FIXTURE_PASSWORD,
+  downloadDelayMs = 0
+} = {}) {
   const png = await sharp({
     create: { width: 200, height: 120, channels: 3, background: { r: 40, g: 80, b: 160 } }
   })
@@ -47,8 +52,8 @@ export async function startFixtureCatalog({ port = 0 } = {}) {
   const app = createApp({
     env: {
       READWISE_TOKEN: "fixture-token",
-      OPDS_USERNAME: FIXTURE_USERNAME,
-      OPDS_PASSWORD: FIXTURE_PASSWORD
+      OPDS_USERNAME: username,
+      OPDS_PASSWORD: password
     },
     fetch,
     lookup: PUBLIC_LOOKUP,
@@ -66,6 +71,9 @@ export async function startFixtureCatalog({ port = 0 } = {}) {
     if (url.pathname === "/opds") {
       response = await app.feed(request);
     } else if (bookMatch) {
+      if (downloadDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, downloadDelayMs));
+      }
       url.searchParams.set("file", decodeURIComponent(bookMatch[1]));
       response = await app.book(new Request(url, { headers: req.headers }), decodeURIComponent(bookMatch[1]).replace(/\.epub$/, ""));
     } else if (shelfMatch) {
@@ -89,8 +97,8 @@ export async function startFixtureCatalog({ port = 0 } = {}) {
   const { port: bound } = server.address();
   return {
     baseUrl: `http://127.0.0.1:${bound}`,
-    username: FIXTURE_USERNAME,
-    password: FIXTURE_PASSWORD,
+    username,
+    password,
     close: () => new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
   };
 }

@@ -105,6 +105,9 @@ npm run verify:crossink      # CrossInk OpdsParser + ContentOpfParser, pinned to
                              # compares the same feeds against CrossPoint
 npm run verify:crossink-limits  # HTTP/1.1 probe of firmware limits (chunked vs
                              # Content-Length, Content-Disposition, 60s timeout)
+npm run verify:crossink-device  # host HttpDownloader + wolfSSL + FatFs walk
+npm run sim:x3                  # headless CrossInk simulator-X3 UI walk + screenshots
+                             # (SDL/curl cannot reproduce issue #7; harness is the download proof)
 ```
 
 To walk a live deployment instead:

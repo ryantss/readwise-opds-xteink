@@ -47,7 +47,7 @@ Two catalogs can run side by side (in-memory data, bind address is localhost). U
 ./scripts/opds-cli --state .cache/verify-opds/instance-b.json launch --port 8789
 ```
 
-A second `launch` against the same state file is refused while that pid is alive. Do not drive a catalog this run did not start. Do not drive `http://localhost:8787` (the token-backed `npm run dev` port) unless a human explicitly asked for a live token server.
+A second `launch` against the same state file is refused while that pid is alive. Do not drive a catalog this run did not start. Do not drive `http://localhost:8787` (the token-backed `npm run dev` port) unless a human explicitly asked for a live token server, or you are running `npm run sim:x3` (that command owns 8787 and defaults to the fixture).
 
 ## Doctor
 
@@ -161,10 +161,52 @@ npm run opds -- launch
 npm run verify:crossink
 npm run verify:crossink-limits
 npm run verify:crossink-device
+npm run sim:x3
 ```
 
 `npm run verify:crossink-device` compiles CrossInk v1.6.1's own `HttpDownloader`, `SecureHttpClient`, `OpdsParser`, `StringUtils`, and `ZipFile` against a host FatFs image and wolfSSL 5.7.2. It fetches root → Inbox → one EPUB the way the X3 does (same UA, headers, 60s/30s timeouts, 2048-byte buffers, `sanitizeFilename` dest path, `.part` publish, `META-INF/container.xml` check) and prints CrossInk's English error strings (`Failed to fetch feed`, `Download failed`, `Insufficient SD card space`) on the failing step.
 
 Credentials: username `ryan` and `OPDS_PASSWORD` against `https://rwopds.vercel.app/opds` when that env is set; otherwise the local fixture catalog. It cannot model ESP32 heap/fragmentation, WiFi timing, or a real SD card.
+
+## X3 simulator (`npm run sim:x3`)
+
+This is the headless Linux stand-in for CrossInk's official `env:simulator-X3` binary (PlatformIO native + SDL2, pin `v1.6.1` / `9914146eeae7b46b300f475a16c32426fc02ec1f`). It is not QEMU. v1.6.1's own docs say the simulator is Apple Silicon only; the sources compile on Linux after a local overlay. The overlay drops Clang's `-Wno-c++11-narrowing` with `build_unflags`, adds GCC's `-Wno-narrowing`, pins `uxjulia/crossink-simulator` to `27655f1d36ef5f8610fedd798d5564d04c8f4320`, and removes the `#ifdef SIMULATOR` fake catalog/download so the UI calls `HttpDownloader`.
+
+The UI simulator cannot reproduce issue #7. That binary is compiled with `-DSIMULATOR` and without `FREEINK_NET_WOLFSSL`. `HttpDownloader` then uses the host `curl` shim: `contentLength` is the buffered body size, so a short body cannot fail the device Content-Length check, and the SD free-space check is compiled out. The wolfSSL + FatFs download proof is `crossink-device-harness`, not the SDL walk. Do not treat a green `sim:x3` UI as evidence that a production EPUB that dies at ~95% would succeed on the X3.
+
+### Launch the catalog
+
+Default (no Readwise token; what agents should use):
+
+```sh
+npm run sim:x3
+```
+
+That starts `startFixtureCatalog()` on `127.0.0.1:8787` with `OPDS_USERNAME=ryan` and password `x3-sim-test` (override with `OPDS_PASSWORD` / `SIM_X3_PASSWORD`). Same routes as `scripts/dev-server.js`, fixture-backed so no `READWISE_TOKEN` is required. This is the one case the rest of this skill allows on port 8787.
+
+If `READWISE_TOKEN` is set, `sim:x3` starts `node scripts/dev-server.js 8787` instead and uses that live token. Do not do that for the fixture recipes above.
+
+Host packages: PlatformIO **6.2.0** (the build script pins `pip install --user platformio==6.2.0`), `libsdl2-dev`, `libssl-dev`, `libexpat1-dev`, `curl`, `ffmpeg` (BMP to PNG), `xvfb` for screenshots, and `autoconf`/`automake`/`libtool` for the wolfSSL step of `build-crossink-device.sh`. First build fetches CrossInk + `freeink-sdk` into `.cache/crossink/`. `libcrypto` is linked for the simulator MD5 builder, not because the HTTP shim uses OpenSSL.
+
+### What the walk does
+
+1. Resets the CrossInk cache to the pin (`git reset --hard` + `clean`) and verifies the overlay (stubs gone, X3 flags present).
+2. Seeds `/.crosspoint/opds.json` on an isolated `CROSSPOINT_SIM_SD` with the catalog URL, `ryan`, and the test password (plaintext `password` is accepted and re-obfuscated on load).
+3. Boots `.pio/build/simulator-X3/program` under Xvfb.
+4. Waits on log events (`Entering activity: …`, `Downloading screen presented`) then injects keys and screenshots through `CROSSINK_SIM_CONTROL`. A wall-clock schedule is not the pass condition. `04-download` is captured while the overlay is presenting the Downloading frame, before the blocking curl fetch.
+5. Asserts seven distinct PNGs, exact `FileBrowser` / `EpubReader` lines, a non-empty zip with `META-INF/container.xml`, and a harness log that contains `PASS step=download` and `ALL PASS`.
+6. Runs `crossink-device-harness --url http://127.0.0.1:8787/opds --shelf Inbox`. That step is the download proof.
+
+Evidence: `.cache/crossink-sim/evidence/<run-id>/` (`meta.json`, `sim-x3.log`, `simulator.log`, `device-harness.log`, `screens/*.png`). A copy is also written to `/opt/cursor/artifacts/sim-x3/` and `/opt/cursor/artifacts/sim-x3-<run-id>/`.
+
+### Missing vs a physical X3
+
+- ESP32 heap / fragmentation
+- wolfSSL record buffers, Content-Length completeness, and the free-space check inside the SDL process (see issue #7 note above)
+- Real e-ink refresh
+- Wi-Fi association (the pin skips Wi-Fi in the simulator and fetches immediately)
+- The fixture inline JPEG often logs `Failed to open JPEG (err=4)` and leaves an empty rectangle on the reader page. Article text still opens. That is a documented simulator decoder miss, not a failed walk.
+
+QEMU for ESP32-C3 is not used. The official native simulator is the X3 UI.
 
 `walk --all` and `npm run verify:crossink` are the same PR #3 harness (`scripts/verify-crossink.js`). Prefer the CLI when you already launched an instance, so doctor and cleanup stay in one place.

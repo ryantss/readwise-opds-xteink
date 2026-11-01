@@ -52,4 +52,5 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Authenticated root menu](./authenticated-root-menu.md) covers opening the catalog with Basic auth and listing Inbox, Shortlist, Later and Archive.
 - [Shelf feeds and paging](./shelf-feeds-and-paging.md) covers a shelf of 10 articles, next/previous links, and CrossInk's 50-entry cap.
 - [EPUB acquisition](./epub-acquisition.md) covers downloading an article as an EPUB with X3-sized baseline JPEGs. Use `npm run verify:crossink-device` when proving the firmware download path itself (HTTP + parser + FatFs + container.xml), not only the catalog bytes.
+- [X3 simulator](./x3-simulator.md) covers the headless CrossInk `simulator-X3` walk (`npm run sim:x3`): Home → catalog → Inbox → download → open, with screenshots.
 - [Auth rejection](./auth-rejection.md) covers requests without credentials and with the wrong password.
