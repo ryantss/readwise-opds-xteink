@@ -160,6 +160,11 @@ If a launch or walk fails, run `stop` anyway so a broken pid does not hold the p
 npm run opds -- launch
 npm run verify:crossink
 npm run verify:crossink-limits
+npm run verify:crossink-device
 ```
+
+`npm run verify:crossink-device` compiles CrossInk v1.6.1's own `HttpDownloader`, `SecureHttpClient`, `OpdsParser`, `StringUtils`, and `ZipFile` against a host FatFs image and wolfSSL 5.7.2. It fetches root → Inbox → one EPUB the way the X3 does (same UA, headers, 60s/30s timeouts, 2048-byte buffers, `sanitizeFilename` dest path, `.part` publish, `META-INF/container.xml` check) and prints CrossInk's English error strings (`Failed to fetch feed`, `Download failed`, `Insufficient SD card space`) on the failing step.
+
+Credentials: username `ryan` and `OPDS_PASSWORD` against `https://rwopds.vercel.app/opds` when that env is set; otherwise the local fixture catalog. It cannot model ESP32 heap/fragmentation, WiFi timing, or a real SD card.
 
 `walk --all` and `npm run verify:crossink` are the same PR #3 harness (`scripts/verify-crossink.js`). Prefer the CLI when you already launched an instance, so doctor and cleanup stay in one place.

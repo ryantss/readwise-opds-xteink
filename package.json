@@ -16,7 +16,8 @@
     "opds": "node scripts/opds-cli.js",
     "verify:crosspoint": "node scripts/verify-crosspoint.js",
     "verify:crossink": "node scripts/verify-crossink.js",
-    "verify:crossink-limits": "node scripts/crossink-http-probe.js --self-test"
+    "verify:crossink-limits": "node scripts/crossink-http-probe.js --self-test",
+    "verify:crossink-device": "node scripts/verify-crossink-device.js"
   },
   "engines": {
     "node": ">=24"
